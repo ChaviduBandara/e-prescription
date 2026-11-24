@@ -6,12 +6,20 @@ agreements and hard rules: [`CLAUDE.md`](CLAUDE.md).
 
 ## Setup
 
+Requires Node.js 22 LTS or newer.
+
 ```
 npm install
+npx playwright install chromium webkit   # once, for the e2e tests
 ```
 
 `postinstall` copies `signature_pad` and the Socket.IO browser client into
 `public/vendor/` so the app never loads a library from a CDN.
+
+The e2e tests start their own server on a free port with a throwaway
+`DATA_DIR` and `ARCHIVE_DIR` in the OS temp folder, so they never touch
+`data/`. Use the `doctor` (1024x1366, touch) and `pharmacy` (1366x768) pages
+from `tests/e2e/fixtures.js` in new specs.
 
 ## Commands
 

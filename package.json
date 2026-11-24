@@ -5,7 +5,7 @@
   "description": "Local-network e-prescription handoff for a single channeling center.",
   "main": "server.js",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "nodemon server.js",

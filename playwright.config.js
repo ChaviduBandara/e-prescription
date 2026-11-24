@@ -4,16 +4,26 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const { defineConfig, devices } = require('@playwright/test');
 
-const PORT = 3100;
-const BASE_URL = `http://localhost:${PORT}`;
+// Playwright evaluates this file in the runner and again in every worker.
+// The runner picks the port and temp dirs once and stores them in env vars,
+// which the workers inherit, so every process agrees on the same server.
+if (!process.env.E2E_PORT) {
+  const findFreePort =
+    "const s=require('net').createServer();" +
+    "s.listen(0,'127.0.0.1',()=>{process.stdout.write(String(s.address().port));s.close();});";
+  process.env.E2E_PORT = execFileSync(process.execPath, ['-e', findFreePort]).toString().trim();
 
-const TMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'e-prescription-e2e-'));
-const DATA_DIR = path.join(TMP_ROOT, 'data');
-const ARCHIVE_DIR = path.join(TMP_ROOT, 'archive');
-fs.mkdirSync(DATA_DIR, { recursive: true });
-fs.mkdirSync(ARCHIVE_DIR, { recursive: true });
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'e-prescription-e2e-'));
+  process.env.E2E_DATA_DIR = path.join(tmpRoot, 'data');
+  process.env.E2E_ARCHIVE_DIR = path.join(tmpRoot, 'archive');
+  fs.mkdirSync(process.env.E2E_DATA_DIR, { recursive: true });
+  fs.mkdirSync(process.env.E2E_ARCHIVE_DIR, { recursive: true });
+}
+
+const BASE_URL = `http://localhost:${process.env.E2E_PORT}`;
 
 module.exports = defineConfig({
   testDir: './tests/e2e',
@@ -30,11 +40,13 @@ module.exports = defineConfig({
   webServer: {
     command: 'node server.js',
     url: `${BASE_URL}/health`,
-    reuseExistingServer: !process.env.CI,
+    // Always start a fresh server with temp dirs; never reuse a dev server
+    // that might be pointing at the real database.
+    reuseExistingServer: false,
     env: {
-      PORT: String(PORT),
-      DATA_DIR,
-      ARCHIVE_DIR
+      PORT: process.env.E2E_PORT,
+      DATA_DIR: process.env.E2E_DATA_DIR,
+      ARCHIVE_DIR: process.env.E2E_ARCHIVE_DIR
     }
   }
 });
