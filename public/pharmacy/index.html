@@ -6,9 +6,33 @@
   <title>e-Prescription — Pharmacy</title>
   <link rel="icon" href="data:," />
   <link rel="stylesheet" href="/shared/style.css" />
+  <link rel="stylesheet" href="/pharmacy/pharmacy.css" />
+  <script src="/vendor/socket.io.min.js"></script>
+  <script type="module" src="/pharmacy/pharmacy.js"></script>
 </head>
 <body>
-  <h1>Pharmacy</h1>
-  <p>Project scaffold is up. The live queue arrives in phase 2.</p>
+  <header class="topbar">
+    <h1>Pharmacy</h1>
+    <span id="session-label" class="session-label"></span>
+    <button id="sound-hint" type="button" class="sound-hint" hidden>Sound is blocked. Click here to turn on alerts.</button>
+    <span id="conn" class="conn" role="status">Connecting…</span>
+  </header>
+
+  <div id="notice" class="notice" role="alert" hidden></div>
+
+  <main>
+    <p id="loading" class="muted">Loading…</p>
+    <p id="load-error" class="msg msg--error" role="alert" hidden></p>
+
+    <section id="no-session" class="card waiting" hidden>
+      <p>No open session. Waiting for the doctor to start one.</p>
+    </section>
+
+    <section id="queue-section" hidden>
+      <h2 class="queue-title">Queue <span id="queue-count" class="muted"></span></h2>
+      <p id="queue-empty" class="empty card">No prescriptions yet.</p>
+      <ol id="queue" class="queue"></ol>
+    </section>
+  </main>
 </body>
 </html>

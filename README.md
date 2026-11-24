@@ -48,10 +48,10 @@ development default:
 
 ```
 server.js        Express + Socket.IO entry point
-src/             db.js, ids.js, archive.js, sessions.js, config.js
+src/             config, db, ids, sessions, prescriptions, validation, socket (events), api (REST)
 public/doctor/   doctor screen
 public/pharmacy/ pharmacist screen
-public/shared/   CSS, alert sound
+public/shared/   CSS, client.js helpers, alert.wav (regenerate: node scripts/make-alert-sound.js)
 public/vendor/   signature_pad, socket.io client (served locally, regenerated on install)
 tests/unit/      node:test
 tests/integration/  node:test with socket.io-client

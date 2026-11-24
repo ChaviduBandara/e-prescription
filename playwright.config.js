@@ -27,7 +27,10 @@ const BASE_URL = `http://localhost:${process.env.E2E_PORT}`;
 
 module.exports = defineConfig({
   testDir: './tests/e2e',
-  fullyParallel: true,
+  // One server and one open session are shared by every test and both
+  // browsers, so tests run one at a time to keep sessions from colliding.
+  fullyParallel: false,
+  workers: 1,
   reporter: 'list',
   use: {
     baseURL: BASE_URL,

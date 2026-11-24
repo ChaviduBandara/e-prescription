@@ -6,9 +6,55 @@
   <title>e-Prescription — Doctor</title>
   <link rel="icon" href="data:," />
   <link rel="stylesheet" href="/shared/style.css" />
+  <link rel="stylesheet" href="/doctor/doctor.css" />
+  <script src="/vendor/socket.io.min.js"></script>
+  <script type="module" src="/doctor/doctor.js"></script>
 </head>
 <body>
-  <h1>Doctor</h1>
-  <p>Project scaffold is up. The session and prescription form arrive in phase 2.</p>
+  <header class="topbar">
+    <h1>Doctor</h1>
+    <span id="session-label" class="session-label"></span>
+    <span id="conn" class="conn" role="status">Connecting…</span>
+  </header>
+
+  <main>
+    <p id="loading" class="muted">Loading…</p>
+    <p id="load-error" class="msg msg--error" role="alert" hidden></p>
+
+    <section id="no-session" class="start card" hidden>
+      <p class="lead">No session is open.</p>
+      <button id="start-session" type="button" class="btn btn--primary btn--xl">Start Session</button>
+      <p id="start-error" class="msg msg--error" role="alert"></p>
+    </section>
+
+    <section id="session" hidden>
+      <form id="rx-form" class="card" novalidate autocomplete="off">
+        <label class="field-label" for="patient-ref">Patient ID or token</label>
+        <input id="patient-ref" class="input input--patient" name="patientRef"
+               maxlength="40" aria-required="true" autocapitalize="characters"
+               spellcheck="false" />
+
+        <fieldset class="lines">
+          <legend class="field-label">Medicines</legend>
+          <div class="line line--header" aria-hidden="true">
+            <span>Medicine</span><span>Dosage</span><span>Instructions</span><span></span>
+          </div>
+          <div id="lines"></div>
+          <button id="add-line" type="button" class="btn btn--secondary">+ Add line</button>
+        </fieldset>
+
+        <div class="send-row">
+          <button id="send" type="submit" class="btn btn--primary btn--xl">Send</button>
+          <p id="send-status" class="msg" role="status" aria-live="polite"></p>
+        </div>
+      </form>
+
+      <section class="card">
+        <h2>This session</h2>
+        <p id="sent-empty" class="empty">Nothing sent yet.</p>
+        <ol id="sent-list" class="sent-list"></ol>
+      </section>
+    </section>
+  </main>
 </body>
 </html>
