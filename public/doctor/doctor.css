@@ -1,0 +1,66 @@
+/* Doctor screen: iPad held upright, finger or stylus. Touch targets >= 56px. */
+body { font-size: 1.15rem; }
+
+.start { text-align: center; padding: 3rem 1.25rem; }
+.start .lead { font-size: 1.4rem; margin: 0 0 1.5rem; }
+.start .msg { margin-top: 1rem; }
+
+.field-label {
+  display: block;
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+
+.input {
+  font: inherit;
+  font-size: 1.2rem;
+  width: 100%;
+  min-height: 56px;
+  padding: 0.5rem 0.8rem;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+}
+.input:focus { outline: none; border-color: var(--primary); }
+.input--patient { font-family: var(--mono); font-size: 1.4rem; max-width: 420px; margin-bottom: 1.5rem; }
+.input[aria-invalid='true'] { border-color: var(--error); }
+
+.lines { border: 0; margin: 0 0 1.5rem; padding: 0; }
+
+.line {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 2fr 56px;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+.line--header { color: var(--muted); font-size: 0.95rem; margin-bottom: 0.3rem; }
+
+.remove-line {
+  font: inherit;
+  font-size: 1.6rem;
+  line-height: 1;
+  min-height: 56px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.send-row { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
+.send-row .msg { flex: 1; font-size: 1.15rem; }
+
+.sent-list { list-style: none; margin: 0; padding: 0; }
+.sent-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.25rem 1rem;
+  align-items: center;
+  padding: 0.8rem 0;
+  border-top: 1px solid var(--border);
+}
+.sent-item:first-child { border-top: 0; }
+.sent-item .patient { font-family: var(--mono); font-weight: 700; }
+.sent-item .summary { grid-column: 1 / -1; color: var(--muted); font-size: 1rem; }
