@@ -29,6 +29,29 @@ body {
 
 [hidden] { display: none !important; }
 
+/* Until the PIN is accepted (public/shared/auth.js) only the PIN screen shows. */
+body.locked > :not(.pin-screen) { display: none !important; }
+.pin-screen { min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 12vh 1.25rem 0; }
+.pin { width: min(420px, 100%); text-align: center; padding: 2rem 1.75rem; }
+.pin__title { margin: 0 0 1.5rem; font-size: 1.75rem; }
+.pin__label { display: block; font-weight: 700; font-size: 1.15rem; margin-bottom: 0.6rem; }
+.pin__input {
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 2rem;
+  letter-spacing: 0.4em;
+  text-align: center;
+  width: 100%;
+  min-height: 64px;
+  padding: 0.4rem 0.8rem;
+  margin-bottom: 1.25rem;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+}
+.pin__input:focus { outline: none; border-color: var(--primary); }
+.pin .btn { width: 100%; }
+.pin .msg { margin-top: 1rem; }
+
 .topbar {
   display: flex;
   align-items: center;

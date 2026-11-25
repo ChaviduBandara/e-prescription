@@ -4,25 +4,18 @@
 'use strict';
 
 const { test, expect } = require('./fixtures');
-const { fakeRef, openDoctor, openPharmacy, ensureSession, startHandwriting, drawStroke, sendAndGetId } = require('./helpers');
+const {
+  fakeRef,
+  openDoctor,
+  openPharmacy,
+  ensureSession,
+  startHandwriting,
+  drawStroke,
+  sendAndGetId,
+  exposeSocket
+} = require('./helpers');
 
 const IMAGE_ROUTE = '**/api/prescriptions/*/image*';
-
-// Keeps the page's Socket.IO client on window.__socket so a test can drop
-// the connection. Runs before /vendor/socket.io.min.js defines window.io.
-function exposeSocket() {
-  let realIo;
-  Object.defineProperty(window, 'io', {
-    configurable: true,
-    get: () =>
-      realIo &&
-      ((...args) => {
-        window.__socket = realIo(...args);
-        return window.__socket;
-      }),
-    set: (value) => (realIo = value)
-  });
-}
 
 // Sends one handwritten prescription from the doctor and returns its ID.
 async function sendHandwritten(doctor, testInfo) {

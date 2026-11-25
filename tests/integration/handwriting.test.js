@@ -13,14 +13,15 @@ const ACK_MS = 3000;
 
 async function setup(t) {
   const harness = await startTestServer(t);
-  const doctor = await harness.connect();
-  const pharmacy = await harness.connect();
+  const doctor = await harness.connect('doctor');
+  const pharmacy = await harness.connect('pharmacy');
   await doctor.timeout(ACK_MS).emitWithAck('session:start', {});
   return { ...harness, doctor, pharmacy };
 }
 
-async function getBytes(base, url) {
-  const res = await fetch(`${base}${url}`);
+// GET as the pharmacy (logged in).
+async function getBytes({ base, cookieFor }, url) {
+  const res = await fetch(`${base}${url}`, { headers: { cookie: await cookieFor('pharmacy') } });
   return { status: res.status, type: res.headers.get('content-type'), headers: res.headers, body: Buffer.from(await res.arrayBuffer()) };
 }
 
@@ -30,7 +31,7 @@ function imageFiles(dataDir) {
 }
 
 test('a handwritten PNG round-trips byte-for-byte', async (t) => {
-  const { base, db, dataDir, doctor, pharmacy } = await setup(t);
+  const { base, cookieFor, getJson, db, dataDir, doctor, pharmacy } = await setup(t);
   const image = makePng({ width: 300, height: 200 });
 
   const received = nextEvent(pharmacy, 'prescription:new', 1000);
@@ -53,14 +54,14 @@ test('a handwritten PNG round-trips byte-for-byte', async (t) => {
   assert.deepEqual(imageFiles(dataDir), [`${rx.id}.png`], 'no temp file left behind');
 
   // Served unchanged as image/png.
-  const served = await getBytes(base, rx.imageUrl);
+  const served = await getBytes({ base, cookieFor }, rx.imageUrl);
   assert.equal(served.status, 200);
   assert.equal(served.type, 'image/png');
   assert.equal(served.headers.get('x-content-type-options'), 'nosniff');
   assert.ok(served.body.equals(image), 'served bytes match the bytes sent');
 
   // The queue REST call lists it too.
-  const list = await fetch(`${base}/api/prescriptions?session=${rx.sessionId}`).then((r) => r.json());
+  const list = (await getJson(`/api/prescriptions?session=${rx.sessionId}`)).body;
   assert.deepEqual(list.prescriptions, [rx]);
 });
 
@@ -119,11 +120,11 @@ test('if the database insert fails, no image file is left behind', async (t) => 
 });
 
 test('the image route returns 404 for unknown, typed and malformed IDs', async (t) => {
-  const { base, doctor } = await setup(t);
+  const { base, cookieFor, doctor } = await setup(t);
   const typed = await doctor.timeout(ACK_MS).emitWithAck('prescription:new', fakeTyped());
   assert.equal(typed.prescription.imageUrl, null);
   for (const id of [typed.prescription.id, 'RX-20260101-9999', 'not-an-id', '..%2F..%2Fe-prescription.db']) {
-    const res = await getBytes(base, `/api/prescriptions/${id}/image`);
+    const res = await getBytes({ base, cookieFor }, `/api/prescriptions/${id}/image`);
     assert.equal(res.status, 404, id);
     assert.notEqual(res.type, 'image/png');
   }

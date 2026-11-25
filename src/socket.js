@@ -15,9 +15,49 @@ const { validatePrescription } = require('./validation');
 
 const SERVER_ERROR = 'Server error. The prescription was NOT saved. Try again.';
 
+// Which role may send each event. Anything else is refused with an ack.
+const PERMISSIONS = {
+  'session:start': 'doctor',
+  'prescription:new': 'doctor',
+  'prescription:dispensed': 'pharmacy',
+  'session:end': 'pharmacy'
+};
+const NOT_ALLOWED = 'This screen is not allowed to do that.';
+
+// Every connection must say which screen it is (handshake auth.role) and
+// carry a valid login cookie for that role. Browsers send the cookie with
+// the handshake; the Origin check stops another site from borrowing it.
+function authenticateSockets(io, auth) {
+  io.use((socket, next) => {
+    const { headers } = socket.request;
+    if (headers.origin) {
+      let originHost;
+      try {
+        originHost = new URL(headers.origin).host;
+      } catch {
+        originHost = null;
+      }
+      if (originHost !== headers.host) return next(new Error('unauthorized'));
+    }
+    const role = socket.handshake.auth && socket.handshake.auth.role;
+    if (auth.rolesFromCookieHeader(headers.cookie, [role]).length !== 1) return next(new Error('unauthorized'));
+    socket.data.role = role;
+    next();
+  });
+}
+
 // `dataDir` is where handwriting PNGs are saved (DATA_DIR/images/).
-function registerSocketHandlers(io, db, { dataDir }) {
+function registerSocketHandlers(io, db, { dataDir, auth }) {
+  authenticateSockets(io, auth);
   io.on('connection', (socket) => {
+    // Refuse events this role may not send, before any handler runs.
+    socket.use(([event, ...args], next) => {
+      const allowed = PERMISSIONS[event];
+      if (!allowed || allowed === socket.data.role) return next();
+      const ack = args[args.length - 1];
+      if (typeof ack === 'function') ack({ ok: false, error: NOT_ALLOWED });
+    });
+
     socket.on('session:start', (_payload, ack) => {
       // Accept both emit('session:start', ack) and emit('session:start', {}, ack).
       if (typeof _payload === 'function') ack = _payload;

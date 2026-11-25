@@ -11,8 +11,8 @@ const ACK_MS = 2000;
 
 async function setup(t) {
   const harness = await startTestServer(t);
-  const doctor = await harness.connect();
-  const pharmacy = await harness.connect();
+  const doctor = await harness.connect('doctor');
+  const pharmacy = await harness.connect('pharmacy');
   return { ...harness, doctor, pharmacy };
 }
 

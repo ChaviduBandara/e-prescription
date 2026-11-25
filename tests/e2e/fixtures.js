@@ -4,6 +4,9 @@
 
 const base = require('@playwright/test');
 
+// Must match the webServer env in playwright.config.js.
+const PINS = { doctor: '2468', pharmacy: '1357' };
+
 const DOCTOR_CONTEXT = { viewport: { width: 1024, height: 1366 }, hasTouch: true };
 const PHARMACY_CONTEXT = { viewport: { width: 1366, height: 768 } };
 
@@ -54,4 +57,4 @@ const test = base.test.extend({
   pharmacy: async ({ browser }, use) => rolePage(browser, PHARMACY_CONTEXT, use, pharmacyInit)
 });
 
-module.exports = { test, expect: base.expect, DOCTOR_CONTEXT, PHARMACY_CONTEXT };
+module.exports = { test, expect: base.expect, DOCTOR_CONTEXT, PHARMACY_CONTEXT, PINS };
