@@ -17,14 +17,20 @@
     <button id="sound-hint" type="button" class="sound-hint" hidden>Sound is blocked. Click here to turn on alerts.</button>
     <button id="end-session" type="button" class="btn btn--danger" hidden>End Session</button>
     <span id="conn" class="conn" role="status">Connecting…</span>
-    <p id="offline-banner" class="offline-banner" role="alert" hidden>
-      Reconnecting to the server… New prescriptions will appear when the connection is back.
-    </p>
-    <!-- Stays until clicked, so a prescription is never missed. Part of the
-         sticky header, so it never covers a card. -->
-    <div id="notice" class="notice" role="alert" hidden>
-      <span id="notice-text"></span>
-      <button id="notice-dismiss" type="button" class="notice__dismiss">OK</button>
+    <!-- Full-width strips under the top bar; they stack. -->
+    <div class="topbar__strips">
+      <p id="offline-banner" class="offline-banner" role="alert" hidden>
+        Reconnecting to the server… New prescriptions will appear when the connection is back.
+      </p>
+      <!-- Shown while a session's PDF could not be written; the server keeps
+           retrying and this clears by itself once it succeeds. -->
+      <p id="archive-warning" class="archive-warning" role="alert" hidden></p>
+      <!-- Stays until clicked, so a prescription is never missed. Part of the
+           sticky header, so it never covers a card. -->
+      <div id="notice" class="notice" role="alert" hidden>
+        <span id="notice-text"></span>
+        <button id="notice-dismiss" type="button" class="notice__dismiss">OK</button>
+      </div>
     </div>
   </header>
 

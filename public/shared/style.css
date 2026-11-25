@@ -60,6 +60,7 @@ body.locked > :not(.pin-screen) { display: none !important; }
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
+  row-gap: 0.75rem;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -88,10 +89,16 @@ body.locked > :not(.pin-screen) { display: none !important; }
 .conn--online { background: var(--success-bg); color: var(--success); }
 .conn--offline { background: var(--error-bg); color: var(--error); }
 
-/* Last child of .topbar: a full-width strip while the connection is down. */
-.offline-banner {
+/* Last child of .topbar: full-width strips (connection, warnings, notices)
+   that stack under the bar. Empty when none is showing. */
+.topbar__strips {
   flex-basis: calc(100% + 2.5rem); /* cancels the .topbar side padding */
-  margin: 0.25rem -1.25rem -0.75rem;
+  margin: 0 -1.25rem -0.75rem;
+}
+.topbar__strips > * { margin: 0; }
+
+/* Shown while the connection is down. */
+.offline-banner {
   padding: 0.7rem 1.25rem;
   background: var(--error);
   color: #fff;
