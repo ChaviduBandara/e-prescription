@@ -1,8 +1,13 @@
-// Doctor screen: start a session, send typed prescriptions, see their status.
+// Doctor screen: start a session, send typed or handwritten prescriptions,
+// see their status.
 import { el, formatTime, sessionLabel, connectSocket, PrescriptionStore } from '/shared/client.js';
+import { createPad } from '/doctor/pad.js';
 
-const ACK_TIMEOUT_MS = 8000;
+const ACK_TIMEOUT_MS = 15000; // a handwriting PNG can take a moment on slow WiFi
+// Must match src/validation.js and src/png.js.
 const PATIENT_ERROR = 'Patient ID or token number is required.';
+const NO_DRAWING_ERROR = 'Draw the prescription before sending.';
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 
 const $ = (id) => document.getElementById(id);
 const store = new PrescriptionStore();
@@ -90,13 +95,64 @@ function addLine() {
   return row;
 }
 
-function readForm() {
+// ---- Typed / Handwrite ------------------------------------------------------
+
+const pad = createPad($('pad'), {
+  wrapper: document.querySelector('.pad'),
+  undoButton: $('pad-undo'),
+  clearButton: $('pad-clear'),
+  lockedEl: $('pad-locked')
+});
+
+function mode() {
+  return document.querySelector('input[name=mode]:checked').value;
+}
+
+// Switching keeps what was typed or drawn in the other mode.
+for (const radio of document.querySelectorAll('input[name=mode]')) {
+  radio.addEventListener('change', () => {
+    const handwritten = mode() === 'handwritten';
+    $('typed-fields').hidden = handwritten;
+    $('handwrite-fields').hidden = !handwritten;
+    if (handwritten) pad.fit(); // the canvas has no size while hidden
+    setStatus('');
+  });
+}
+
+// The payload for prescription:new. Handwriting goes as the PNG bytes,
+// exactly as drawn; nothing reads or converts it.
+async function readForm() {
+  const patientRef = $('patient-ref').value;
+  if (mode() === 'handwritten') {
+    return { kind: 'handwritten', patientRef, image: pad.isEmpty() ? null : await pad.toPng() };
+  }
   const lines = [...$('lines').children].map((row) => ({
     medicine: row.querySelector('[name=medicine]').value,
     dosage: row.querySelector('[name=dosage]').value,
     instructions: row.querySelector('[name=instructions]').value
   }));
-  return { patientRef: $('patient-ref').value, lines };
+  return { kind: 'typed', patientRef, lines };
+}
+
+// Catches the common mistakes before sending. The server checks again.
+function checkForm(payload) {
+  if (!payload.patientRef.trim()) return PATIENT_ERROR;
+  if (payload.kind !== 'handwritten') return null;
+  // Rotated: the doctor cannot see the drawing to check it, so wait.
+  if (pad.lockMessage()) return pad.lockMessage();
+  if (!payload.image) return NO_DRAWING_ERROR;
+  if (payload.image.byteLength > MAX_IMAGE_BYTES) return 'The drawing is too large. Clear it and draw again.';
+  return null;
+}
+
+function showFormError(message) {
+  setStatus(message, 'error');
+  if (message === PATIENT_ERROR) {
+    $('patient-ref').setAttribute('aria-invalid', 'true');
+    $('patient-ref').focus();
+  } else if (message === NO_DRAWING_ERROR) {
+    pad.markInvalid(true);
+  }
 }
 
 function resetForm() {
@@ -104,6 +160,7 @@ function resetForm() {
   $('patient-ref').removeAttribute('aria-invalid');
   $('lines').replaceChildren();
   addLine();
+  pad.clear();
 }
 
 function setStatus(text, kind) {
@@ -114,31 +171,33 @@ function setStatus(text, kind) {
 
 $('add-line').addEventListener('click', () => addLine().querySelector('input').focus());
 
-$('rx-form').addEventListener('submit', (event) => {
+$('rx-form').addEventListener('submit', async (event) => {
   event.preventDefault();
+  const send = $('send');
+  if (send.disabled) return; // a send is already in flight
   if (!socket.connected) {
     setStatus('Offline: NOT sent. Check the WiFi and try again.', 'error');
     return;
   }
-  const send = $('send');
-  send.disabled = true;
-  setStatus('Sending…');
   $('patient-ref').removeAttribute('aria-invalid');
+  pad.markInvalid(false);
 
-  socket.timeout(ACK_TIMEOUT_MS).emit('prescription:new', readForm(), (err, res) => {
+  send.disabled = true;
+  const payload = await readForm();
+  const problem = checkForm(payload);
+  if (problem) {
+    send.disabled = false;
+    return showFormError(problem);
+  }
+  setStatus('Sending…');
+
+  socket.timeout(ACK_TIMEOUT_MS).emit('prescription:new', payload, (err, res) => {
     send.disabled = false;
     if (err) {
       setStatus('No reply from the pharmacy PC. Check the list below before sending again.', 'error');
       return;
     }
-    if (!res.ok) {
-      setStatus(res.error, 'error');
-      if (res.error === PATIENT_ERROR) {
-        $('patient-ref').setAttribute('aria-invalid', 'true');
-        $('patient-ref').focus();
-      }
-      return;
-    }
+    if (!res.ok) return showFormError(res.error);
     store.upsert(res.prescription);
     renderList();
     setStatus(`Sent ${res.prescription.id} (${res.prescription.patientRef})`, 'success');
@@ -161,7 +220,7 @@ function renderList() {
         el('span', { className: 'rx-id' }, rx.id),
         el('span', {}, el('span', { className: 'patient' }, rx.patientRef), ' · ', el('span', { className: 'muted' }, formatTime(rx.createdAt))),
         el('span', { className: `badge badge--${rx.status}` }, STATUS_TEXT[rx.status] || rx.status),
-        el('span', { className: 'summary' }, rx.lines.map((l) => l.medicine).join(', '))
+        el('span', { className: 'summary' }, rx.kind === 'handwritten' ? 'Handwritten' : rx.lines.map((l) => l.medicine).join(', '))
       )
     )
   );

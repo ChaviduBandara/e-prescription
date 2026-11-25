@@ -16,6 +16,7 @@ const socket = connectSocket({
   onState: (state) => {
     $('load-error').hidden = true;
     setSession(state.session);
+    if (!state.session || state.session.id !== store.sessionId) imageButtons.clear();
     store.sync(state.session && state.session.id, state.prescriptions);
     renderQueue();
   },
@@ -114,9 +115,41 @@ function renderCard(rx, highlighted) {
       el('span', { className: `badge badge--${rx.status}` }, STATUS_TEXT[rx.status] || rx.status)
     ),
     el('p', { className: 'rx-card__patient' }, rx.patientRef),
-    renderLines(rx.lines)
+    rx.kind === 'handwritten' ? renderHandwriting(rx) : renderLines(rx.lines)
   );
 }
+
+// Handwriting is shown as the image, exactly as drawn. The button is kept
+// across re-renders so the image is not reloaded each time one arrives.
+const imageButtons = new Map();
+
+function renderHandwriting(rx) {
+  if (imageButtons.has(rx.id)) return imageButtons.get(rx.id);
+  const label = `Handwritten prescription ${rx.id}`;
+  const button = el(
+    'button',
+    { type: 'button', className: 'rx-image', title: 'Tap to view full screen', 'aria-label': `${label}. Open full screen.` },
+    el('img', { src: rx.imageUrl, alt: label, decoding: 'async' })
+  );
+  button.addEventListener('click', () => openViewer(rx));
+  imageButtons.set(rx.id, button);
+  return button;
+}
+
+// ---- Full-screen viewer ----------------------------------------------------
+
+const viewer = $('viewer');
+
+function openViewer(rx) {
+  $('viewer-title').textContent = `${rx.id} · ${rx.patientRef}`;
+  $('viewer-image').src = rx.imageUrl;
+  $('viewer-image').alt = `Handwritten prescription ${rx.id}`;
+  viewer.showModal();
+}
+
+$('viewer-close').addEventListener('click', () => viewer.close());
+// A tap anywhere on the picture closes it too.
+$('viewer-image').addEventListener('click', () => viewer.close());
 
 function renderLines(lines) {
   return el(

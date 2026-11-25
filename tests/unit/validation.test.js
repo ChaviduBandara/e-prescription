@@ -2,8 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validateTypedPrescription, LIMITS, ERRORS } = require('../../src/validation');
-const { fakeTyped } = require('../helpers');
+const { validateTypedPrescription, validatePrescription, LIMITS, ERRORS } = require('../../src/validation');
+const { fakeTyped, fakeHandwritten, makePng } = require('../helpers');
+const { MAX_IMAGE_BYTES } = require('../../src/png');
 
 const validate = validateTypedPrescription;
 
@@ -15,6 +16,7 @@ test('accepts a valid typed prescription and trims every field', () => {
   assert.deepEqual(result, {
     ok: true,
     value: {
+      kind: 'typed',
       patientRef: 'TOKEN-001',
       lines: [{ medicine: 'Test Medicine 10mg', dosage: '1 tablet', instructions: 'Twice daily' }]
     }
@@ -78,5 +80,57 @@ test('rejects payloads that are not objects', () => {
 
 test('ignores unknown fields', () => {
   const result = validate({ ...fakeTyped(), kind: 'handwritten', id: 'RX-HACK' });
-  assert.deepEqual(Object.keys(result.value), ['patientRef', 'lines']);
+  assert.deepEqual(Object.keys(result.value), ['kind', 'patientRef', 'lines']);
+  assert.equal(result.value.kind, 'typed');
+});
+
+// ---- validatePrescription: picks typed or handwritten -----------------------
+
+test('a payload without kind is validated as typed', () => {
+  const result = validatePrescription(fakeTyped());
+  assert.equal(result.ok, true);
+  assert.equal(result.value.kind, 'typed');
+});
+
+test('rejects an unknown kind', () => {
+  assert.deepEqual(validatePrescription(fakeTyped({ kind: 'scanned' })), { ok: false, error: ERRORS.invalid });
+  assert.deepEqual(validatePrescription(null), { ok: false, error: ERRORS.invalid });
+});
+
+test('accepts a handwritten prescription and keeps the PNG bytes unchanged', () => {
+  const image = makePng();
+  const result = validatePrescription(fakeHandwritten({ patientRef: ' TOKEN-002 ', image }));
+  assert.equal(result.ok, true);
+  assert.equal(result.value.kind, 'handwritten');
+  assert.equal(result.value.patientRef, 'TOKEN-002');
+  assert.equal(result.value.image, image);
+  assert.equal(result.value.lines, undefined);
+});
+
+test('a handwritten prescription needs a patient ref', () => {
+  for (const patientRef of [undefined, '', '   ']) {
+    assert.deepEqual(validatePrescription(fakeHandwritten({ patientRef })), { ok: false, error: ERRORS.patientRef });
+  }
+  assert.deepEqual(validatePrescription(fakeHandwritten({ patientRef: 'X'.repeat(LIMITS.patientRef + 1) })), {
+    ok: false,
+    error: ERRORS.patientRefTooLong
+  });
+});
+
+test('rejects an empty canvas, a missing image, and a non-PNG', () => {
+  assert.deepEqual(validatePrescription(fakeHandwritten({ image: makePng({ blank: true }) })), { ok: false, error: ERRORS.noDrawing });
+  assert.deepEqual(validatePrescription(fakeHandwritten({ image: undefined })), { ok: false, error: ERRORS.noDrawing });
+  assert.deepEqual(validatePrescription(fakeHandwritten({ image: Buffer.from('GIF89a......') })), {
+    ok: false,
+    error: ERRORS.imageInvalid
+  });
+  assert.deepEqual(validatePrescription(fakeHandwritten({ image: 'data:image/png;base64,iVBORw0KGgo=' })), {
+    ok: false,
+    error: ERRORS.imageInvalid
+  });
+});
+
+test('rejects a drawing over the size limit', () => {
+  const image = Buffer.concat([makePng(), Buffer.alloc(MAX_IMAGE_BYTES)]);
+  assert.deepEqual(validatePrescription(fakeHandwritten({ image })), { ok: false, error: ERRORS.imageTooLarge });
 });

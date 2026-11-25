@@ -3,12 +3,17 @@
 'use strict';
 
 const { startSession } = require('./sessions');
-const { createTypedPrescription, NoOpenSessionError } = require('./prescriptions');
-const { validateTypedPrescription } = require('./validation');
+const {
+  createTypedPrescription,
+  createHandwrittenPrescription,
+  NoOpenSessionError
+} = require('./prescriptions');
+const { validatePrescription } = require('./validation');
 
 const SERVER_ERROR = 'Server error. The prescription was NOT saved. Try again.';
 
-function registerSocketHandlers(io, db) {
+// `dataDir` is where handwriting PNGs are saved (DATA_DIR/images/).
+function registerSocketHandlers(io, db, { dataDir }) {
   io.on('connection', (socket) => {
     socket.on('session:start', (_payload, ack) => {
       // Accept both emit('session:start', ack) and emit('session:start', {}, ack).
@@ -26,12 +31,15 @@ function registerSocketHandlers(io, db) {
 
     socket.on('prescription:new', (payload, ack) => {
       const reply = safeAck(ack);
-      const result = validateTypedPrescription(payload);
+      const result = validatePrescription(payload);
       if (!result.ok) return reply({ ok: false, error: result.error });
 
       let prescription;
       try {
-        prescription = createTypedPrescription(db, result.value);
+        prescription =
+          result.value.kind === 'handwritten'
+            ? createHandwrittenPrescription(db, dataDir, result.value)
+            : createTypedPrescription(db, result.value);
       } catch (err) {
         if (err instanceof NoOpenSessionError) return reply({ ok: false, error: err.message });
         console.error('prescription:new failed:', err.message);
