@@ -38,6 +38,31 @@ const socket = connectSocket({
 // Images that failed while the server was unreachable load again on reconnect.
 socket.on('connect', retryFailed);
 
+// ---- Archive warning ---------------------------------------------------------
+
+socket.on('archive:status', showArchiveStatus);
+socket.on('connect', async () => {
+  try {
+    const res = await fetch('/api/archive/status', { cache: 'no-store' });
+    if (res.ok) showArchiveStatus(await res.json());
+  } catch {
+    // Offline again: the next connect tries again.
+  }
+});
+
+function showArchiveStatus({ failing }) {
+  const box = $('archive-warning');
+  box.hidden = failing.length === 0;
+  if (!failing.length) return;
+  const ids = failing.map((f) => f.sessionId).join(', ');
+  const what = failing.length === 1 ? `The PDF archive for session ${ids}` : `The PDF archives for sessions ${ids}`;
+  const next = failing.map((f) => f.nextRetryAt).sort()[0];
+  box.textContent =
+    `${what} could not be saved: ${failing[0].error}. ` +
+    `Retrying automatically${next ? ` (next try ${formatTime(next)})` : ''}. ` +
+    'The prescriptions are safe in the database.';
+}
+
 setUpStartGate(() => {
   receiving = true;
   $('receiving').hidden = false;
@@ -100,7 +125,8 @@ function endedSession(s) {
   setSession(null);
   store.sync(null);
   renderQueue();
-  $('ended-note').textContent = `Session ${s.id} ended at ${formatTime(s.endedAt)}.`;
+  const archived = s.archiveFile ? ` Archived as ${s.archiveFile}.` : ' The PDF archive is not saved yet (see the warning above).';
+  $('ended-note').textContent = `Session ${s.id} ended at ${formatTime(s.endedAt)}.${archived}`;
   $('ended-note').hidden = false;
 }
 

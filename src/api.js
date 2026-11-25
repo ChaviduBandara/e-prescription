@@ -7,7 +7,7 @@ const { getOpenSession, getSession } = require('./sessions');
 const { listForSession, getImageFile } = require('./prescriptions');
 const { ID_PATTERN } = require('./ids');
 
-function createApiRouter(db, { dataDir, auth }) {
+function createApiRouter(db, { dataDir, auth, archiver }) {
   const router = express.Router();
 
   // ---- Login (open) ----
@@ -50,6 +50,11 @@ function createApiRouter(db, { dataDir, auth }) {
       return res.status(404).json({ error: 'Session not found.' });
     }
     res.json({ prescriptions: listForSession(db, sessionId) });
+  });
+
+  // Sessions whose PDF could not be written yet (the pharmacy shows a warning).
+  router.get('/archive/status', (req, res) => {
+    res.json(archiver.status());
   });
 
   // The handwriting exactly as drawn: the stored PNG bytes, unchanged.

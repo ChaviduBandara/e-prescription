@@ -27,6 +27,8 @@ module.exports = {
   ARCHIVE_DIR: envString('ARCHIVE_DIR', path.join(DATA_DIR, 'archive')),
   DOCTOR_PIN: envString('DOCTOR_PIN', '1234'),
   PHARMACY_PIN: envString('PHARMACY_PIN', '5678'),
+  // Printed at the top of every archive PDF.
+  CLINIC_NAME: envString('CLINIC_NAME', 'Channeling Center'),
   // Optional. If unset, a random secret is created in DATA_DIR/session-secret.
   SESSION_SECRET: envString('SESSION_SECRET', '')
 };

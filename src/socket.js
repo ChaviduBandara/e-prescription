@@ -47,7 +47,7 @@ function authenticateSockets(io, auth) {
 }
 
 // `dataDir` is where handwriting PNGs are saved (DATA_DIR/images/).
-function registerSocketHandlers(io, db, { dataDir, auth }) {
+function registerSocketHandlers(io, db, { dataDir, auth, archiver }) {
   authenticateSockets(io, auth);
   io.on('connection', (socket) => {
     // Refuse events this role may not send, before any handler runs.
@@ -113,8 +113,10 @@ function registerSocketHandlers(io, db, { dataDir, auth }) {
       if (result.changed) io.emit('prescription:dispensed', result.prescription);
     });
 
-    // Closes the session. The PDF archive is added in phase 6.
-    socket.on('session:end', (payload, ack) => {
+    // Closes the session (saved first), then tries the PDF archive once
+    // before replying. If the PDF fails the session stays closed and the
+    // archiver keeps retrying; the reply and archive:status say so.
+    socket.on('session:end', async (payload, ack) => {
       const reply = safeAck(ack);
       const id = payload && payload.sessionId;
       if (!Number.isSafeInteger(id) || id < 1) return reply({ ok: false, error: 'Unknown session.' });
@@ -127,8 +129,14 @@ function registerSocketHandlers(io, db, { dataDir, auth }) {
         return reply({ ok: false, error: 'Server error. The session is still open. Try again.' });
       }
       if (result.closed) console.log(`ended session ${id}`);
-      reply({ ok: true, session: result.session });
-      if (result.closed) io.emit('session:ended', result.session);
+      let session = result.session;
+      let archive = { ok: true };
+      if (!session.archiveFile) {
+        archive = await archiver.archive(id);
+        if (archive.ok) session = archive.session;
+      }
+      reply({ ok: true, session, archive: archive.ok ? { ok: true, file: session.archiveFile } : archive });
+      if (result.closed) io.emit('session:ended', session);
     });
   });
 }

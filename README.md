@@ -43,13 +43,14 @@ development default:
 | `ARCHIVE_DIR` | `./data/archive` | Where session PDFs are written (point this at the Google Drive for Desktop sync folder in production) |
 | `DOCTOR_PIN` | `1234` | PIN for the doctor screen. **Set it before clinic use**; the server warns at startup while the default is in use. |
 | `PHARMACY_PIN` | `5678` | PIN for the pharmacy screen. Same as above. |
+| `CLINIC_NAME` | `Channeling Center` | Printed at the top of every archive PDF |
 | `SESSION_SECRET` | random, kept in `DATA_DIR/session-secret` | Signs the login cookies. Optional; leave unset to use the generated file. |
 
 ## Layout
 
 ```
 server.js        Express + Socket.IO entry point
-src/             config, db, ids, sessions, prescriptions, validation, png (handwriting checks), auth (PIN login), socket (events), api (REST)
+src/             config, db, ids, sessions, prescriptions, validation, png (handwriting checks), auth (PIN login), archive (session PDF), socket (events), api (REST)
 public/doctor/   doctor screen (pad.js: handwriting canvas; portrait only, see below)
 public/pharmacy/ pharmacist screen (alerts.js: Start receiving, sound, notice; end-session.js; image-view.js: handwriting loading/error states)
 public/shared/   CSS, client.js helpers, auth.js (PIN screen), alert.wav (regenerate: node scripts/make-alert-sound.js)
@@ -91,8 +92,8 @@ connection to the server comes back. See `public/pharmacy/image-view.js` and
   list shows it as Dispensed within a second.
 - **End Session** (top right) asks for confirmation, warns if any are not
   marked Dispensed, then closes the session. Both screens go back to their
-  start state; prescriptions stay in the database. The PDF archive is added
-  in phase 6.
+  start state; prescriptions stay in the database. The session is archived
+  as a PDF (see below).
 - **Connection.** Both screens show Connected / Reconnecting… at the top
   right, and a red strip while the connection is down. They reload the
   session and queue on their own when it comes back.
@@ -111,3 +112,23 @@ Each screen opens on a PIN screen. The right PIN (`DOCTOR_PIN` or
 - 5 wrong PINs lock that role out on that device for 1 minute.
 - Changing a PIN (and restarting the server) logs that role out everywhere.
   So does deleting `DATA_DIR/session-secret`.
+
+## Session archive (PDF)
+
+When the pharmacist ends a session, the server writes one PDF to
+`ARCHIVE_DIR` named `YYYY-MM-DD_session-<id>.pdf` (the date the session
+started). It holds the clinic name, the session's start and end times, then
+every prescription in arrival order: ID, patient ref, sent and dispensed
+times, and the typed lines or the handwriting image as drawn (scaled to the
+page width, never stretched, always on the same page as its ID).
+
+- The PDF is written to a hidden `.…partial` file in the same folder, flushed
+  to disk and then renamed, so Google Drive never syncs a half-written file.
+- An existing file is never overwritten; a clash (e.g. after starting a new
+  database) gets `_2`, `_3` … added.
+- If the folder cannot be written (Drive not running, disk full, …) the
+  session still closes and nothing is lost. The pharmacy screen shows a
+  yellow warning, and the server retries after 5 s, 10 s, 20 s … up to every
+  5 minutes until it works. Sessions left without a PDF (e.g. the PC was
+  switched off) are archived when the server next starts.
+- The pharmacy's "session ended" message names the archive file.

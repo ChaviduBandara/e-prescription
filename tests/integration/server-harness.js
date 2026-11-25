@@ -2,6 +2,7 @@
 // Socket.IO clients that play the doctor and the pharmacy.
 'use strict';
 
+const path = require('path');
 const { io } = require('socket.io-client');
 const { start } = require('../../server');
 const { makeTempDir, removeDir } = require('../helpers');
@@ -9,9 +10,19 @@ const { makeTempDir, removeDir } = require('../helpers');
 // Fake PINs for tests only.
 const PINS = { doctor: '1111', pharmacy: '2222' };
 
-async function startTestServer(t, { authOptions } = {}) {
+// The archive folder is inside the temp DATA_DIR, never the real one.
+async function startTestServer(t, { authOptions, archiveOptions, archiveDir } = {}) {
   const dataDir = makeTempDir();
-  const server = await start({ port: 0, dataDir, pins: PINS, authOptions });
+  archiveDir = archiveDir || path.join(dataDir, 'archive');
+  const server = await start({
+    port: 0,
+    dataDir,
+    archiveDir,
+    clinicName: 'Test Clinic',
+    pins: PINS,
+    authOptions,
+    archiveOptions
+  });
   const base = `http://localhost:${server.port}`;
   const clients = [];
 
@@ -74,7 +85,7 @@ async function startTestServer(t, { authOptions } = {}) {
     return { status: res.status, body: await res.json() };
   }
 
-  return { server, db: server.db, base, dataDir, connect, getJson, login, cookieFor, PINS };
+  return { server, db: server.db, base, dataDir, archiveDir, connect, getJson, login, cookieFor, PINS };
 }
 
 // Resolves with the next `event` on `socket`, or rejects after `ms`.
