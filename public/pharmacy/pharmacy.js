@@ -16,7 +16,9 @@ let receiving = false; // true after the Start receiving tap
 const dispensing = new Set(); // IDs waiting for the server's ack
 const cardErrors = new Map(); // ID -> message shown on the card
 
+// Loaded by /shared/auth.js only after the pharmacy PIN is accepted.
 const socket = connectSocket({
+  role: 'pharmacy',
   statusEl: $('conn'),
   bannerEl: $('offline-banner'),
   onState: (state) => {

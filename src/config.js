@@ -26,5 +26,7 @@ module.exports = {
   DATA_DIR,
   ARCHIVE_DIR: envString('ARCHIVE_DIR', path.join(DATA_DIR, 'archive')),
   DOCTOR_PIN: envString('DOCTOR_PIN', '1234'),
-  PHARMACY_PIN: envString('PHARMACY_PIN', '5678')
+  PHARMACY_PIN: envString('PHARMACY_PIN', '5678'),
+  // Optional. If unset, a random secret is created in DATA_DIR/session-secret.
+  SESSION_SECRET: envString('SESSION_SECRET', '')
 };

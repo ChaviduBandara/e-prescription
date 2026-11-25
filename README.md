@@ -41,17 +41,18 @@ development default:
 | `PORT` | `3000` | HTTP port |
 | `DATA_DIR` | `./data` | SQLite database (`e-prescription.db`) and handwriting PNGs (`images/<prescription id>.png`, max 3 MB each). Back up the whole folder. |
 | `ARCHIVE_DIR` | `./data/archive` | Where session PDFs are written (point this at the Google Drive for Desktop sync folder in production) |
-| `DOCTOR_PIN` | `1234` | PIN for the doctor screen |
-| `PHARMACY_PIN` | `5678` | PIN for the pharmacy screen |
+| `DOCTOR_PIN` | `1234` | PIN for the doctor screen. **Set it before clinic use**; the server warns at startup while the default is in use. |
+| `PHARMACY_PIN` | `5678` | PIN for the pharmacy screen. Same as above. |
+| `SESSION_SECRET` | random, kept in `DATA_DIR/session-secret` | Signs the login cookies. Optional; leave unset to use the generated file. |
 
 ## Layout
 
 ```
 server.js        Express + Socket.IO entry point
-src/             config, db, ids, sessions, prescriptions, validation, png (handwriting checks), socket (events), api (REST)
+src/             config, db, ids, sessions, prescriptions, validation, png (handwriting checks), auth (PIN login), socket (events), api (REST)
 public/doctor/   doctor screen (pad.js: handwriting canvas; portrait only, see below)
 public/pharmacy/ pharmacist screen (alerts.js: Start receiving, sound, notice; end-session.js; image-view.js: handwriting loading/error states)
-public/shared/   CSS, client.js helpers, alert.wav (regenerate: node scripts/make-alert-sound.js)
+public/shared/   CSS, client.js helpers, auth.js (PIN screen), alert.wav (regenerate: node scripts/make-alert-sound.js)
 public/vendor/   signature_pad, socket.io client (served locally, regenerated on install)
 tests/unit/      node:test
 tests/integration/  node:test with socket.io-client
@@ -95,3 +96,18 @@ connection to the server comes back. See `public/pharmacy/image-view.js` and
 - **Connection.** Both screens show Connected / Reconnecting… at the top
   right, and a red strip while the connection is down. They reload the
   session and queue on their own when it comes back.
+
+## PIN protection
+
+Each screen opens on a PIN screen. The right PIN (`DOCTOR_PIN` or
+`PHARMACY_PIN`) sets a signed, httpOnly cookie for that role, valid for
+24 hours, so a tablet or PC asks again once a day. There are no user accounts.
+
+- Every `/api` route except login needs a doctor or pharmacy login. Both
+  roles can read the session and queue.
+- Every Socket.IO connection needs one too. The doctor can only start
+  sessions and send prescriptions; the pharmacy can only mark Dispensed
+  and end sessions.
+- 5 wrong PINs lock that role out on that device for 1 minute.
+- Changing a PIN (and restarting the server) logs that role out everywhere.
+  So does deleting `DATA_DIR/session-secret`.

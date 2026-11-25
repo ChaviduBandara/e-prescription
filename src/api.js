@@ -1,4 +1,5 @@
 // REST routes the screens use to load state on open and on reconnect.
+// Only /api/auth/* is open; everything else needs a doctor or pharmacy login.
 'use strict';
 
 const express = require('express');
@@ -6,8 +7,34 @@ const { getOpenSession, getSession } = require('./sessions');
 const { listForSession, getImageFile } = require('./prescriptions');
 const { ID_PATTERN } = require('./ids');
 
-function createApiRouter(db, { dataDir }) {
+function createApiRouter(db, { dataDir, auth }) {
   const router = express.Router();
+
+  // ---- Login (open) ----
+  router.post('/auth/login', express.json({ limit: '1kb' }), (req, res) => {
+    const { role, pin } = req.body || {};
+    const result = auth.login(role, pin, req.ip);
+    if (!result.ok) {
+      if (result.retryAfter) res.set('Retry-After', String(result.retryAfter));
+      return res.status(result.status).json({ error: result.error, retryAfter: result.retryAfter });
+    }
+    res.set('Set-Cookie', result.cookie);
+    res.json({ ok: true, role });
+  });
+
+  // Whether this browser is logged in as `role`. Never reveals the PIN.
+  router.get('/auth/check', (req, res) => {
+    const role = String(req.query.role || '');
+    res.json({ ok: auth.rolesFromCookieHeader(req.headers.cookie, [role]).length === 1 });
+  });
+
+  // ---- Everything below needs a login. Both roles read the same state. ----
+  router.use((req, res, next) => {
+    const roles = auth.rolesFromCookieHeader(req.headers.cookie);
+    if (roles.length === 0) return res.status(401).json({ error: 'Enter the PIN first.' });
+    req.roles = roles;
+    next();
+  });
 
   router.get('/session/current', (req, res) => {
     res.json({ session: getOpenSession(db) });

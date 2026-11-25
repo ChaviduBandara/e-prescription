@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const path = require('path');
 
 const CONFIG_PATH = require.resolve('../../src/config');
-const KEYS = ['PORT', 'DATA_DIR', 'ARCHIVE_DIR', 'DOCTOR_PIN', 'PHARMACY_PIN'];
+const KEYS = ['PORT', 'DATA_DIR', 'ARCHIVE_DIR', 'DOCTOR_PIN', 'PHARMACY_PIN', 'SESSION_SECRET'];
 
 // Load a fresh copy of config.js with the given env vars set (others unset).
 function loadConfig(env = {}) {
@@ -53,4 +53,9 @@ test('config reads every setting from environment variables', () => {
 
 test('config falls back to the default port when PORT is not a number', () => {
   assert.equal(loadConfig({ PORT: 'abc' }).PORT, 3000);
+});
+
+test('SESSION_SECRET is optional and read from the environment', () => {
+  assert.equal(loadConfig().SESSION_SECRET, '');
+  assert.equal(loadConfig({ SESSION_SECRET: 'test-only-secret' }).SESSION_SECRET, 'test-only-secret');
 });

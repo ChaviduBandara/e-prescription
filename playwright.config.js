@@ -49,7 +49,10 @@ module.exports = defineConfig({
     env: {
       PORT: process.env.E2E_PORT,
       DATA_DIR: process.env.E2E_DATA_DIR,
-      ARCHIVE_DIR: process.env.E2E_ARCHIVE_DIR
+      ARCHIVE_DIR: process.env.E2E_ARCHIVE_DIR,
+      // Fake PINs for tests only (tests/e2e/fixtures.js PINS).
+      DOCTOR_PIN: '2468',
+      PHARMACY_PIN: '1357'
     }
   }
 });

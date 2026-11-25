@@ -1,14 +1,39 @@
 // Page actions shared by the e2e specs.
 'use strict';
 
-const { expect } = require('./fixtures');
+const { expect, PINS } = require('./fixtures');
 
 // Obviously fake, and unique per test so a shared server never confuses them.
 function fakeRef(testInfo) {
   return `TOKEN-${testInfo.project.name.slice(0, 3).toUpperCase()}-${String(Date.now()).slice(-6)}`;
 }
 
+// For page.addInitScript: keeps the page's Socket.IO client on
+// window.__socket so a test can drop the connection. Runs before /vendor/socket.io.min.js defines window.io.
+function exposeSocket() {
+  let realIo;
+  Object.defineProperty(window, 'io', {
+    configurable: true,
+    get: () =>
+      realIo &&
+      ((...args) => {
+        window.__socket = realIo(...args);
+        return window.__socket;
+      }),
+    set: (value) => (realIo = value)
+  });
+}
+
+// Logs this browser context in as `role` through the API (the PIN screen
+// itself is tested in pin.spec.js). page.request shares the context's
+// cookies, so the page that loads next is already unlocked.
+async function login(page, role) {
+  const res = await page.request.post('/api/auth/login', { data: { role, pin: PINS[role] } });
+  expect(res.status(), `login as ${role}`).toBe(200);
+}
+
 async function openDoctor(doctor) {
+  await login(doctor, 'doctor');
   await doctor.goto('/doctor/');
   await expect(doctor.locator('#conn')).toHaveText('Connected');
   await expect(doctor.locator('#no-session:visible, #session:visible')).toBeVisible();
@@ -17,6 +42,7 @@ async function openDoctor(doctor) {
 // Opens the pharmacy screen and taps Start receiving, like the pharmacist
 // does once per page load (it unlocks the alert sound).
 async function openPharmacy(pharmacy) {
+  await login(pharmacy, 'pharmacy');
   await pharmacy.goto('/pharmacy/');
   await expect(pharmacy.locator('#conn')).toHaveText('Connected');
   await pharmacy.getByRole('button', { name: 'Start receiving' }).click();
@@ -140,6 +166,8 @@ async function padSize(doctor) {
 }
 
 module.exports = {
+  login,
+  exposeSocket,
   fakeRef,
   openDoctor,
   openPharmacy,

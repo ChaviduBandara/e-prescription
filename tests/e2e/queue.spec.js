@@ -3,13 +3,14 @@
 'use strict';
 
 const { test, expect } = require('./fixtures');
-const { fakeRef, openDoctor, openPharmacy, ensureSession, sendTyped } = require('./helpers');
+const { login, fakeRef, openDoctor, openPharmacy, ensureSession, sendTyped } = require('./helpers');
 
 const ID_RE = /^RX-\d{8}-\d{4,}$/;
 
 test('the pharmacy queue stays hidden until Start receiving is tapped', async ({ doctor, pharmacy }, testInfo) => {
   await openDoctor(doctor);
   await ensureSession(doctor);
+  await login(pharmacy, 'pharmacy');
   await pharmacy.goto('/pharmacy/');
   await expect(pharmacy.locator('#conn')).toHaveText('Connected');
   const start = pharmacy.getByRole('button', { name: 'Start receiving' });

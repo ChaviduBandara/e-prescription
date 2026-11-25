@@ -70,13 +70,29 @@ export class PrescriptionStore {
   }
 }
 
+// The server refused the login: reload, which shows the PIN screen. Only
+// if the server agrees we are logged out, so this can never loop.
+async function backToPinScreen(socket, role) {
+  try {
+    const res = await fetch(`/api/auth/check?role=${role}`, { cache: 'no-store' });
+    if (res.ok && (await res.json()).ok === false) {
+      socket.disconnect();
+      window.location.reload();
+    }
+  } catch {
+    // Server unreachable: Socket.IO keeps retrying.
+  }
+}
+
 // Connects Socket.IO and reloads state on every (re)connect.
 // `io` is the global from /vendor/socket.io.min.js.
 // socket.reload() fetches state again; it resolves after onState has run.
 // `statusEl` shows Connected / Reconnecting…; `bannerEl` (optional) is shown
 // while the connection is down. Socket.IO keeps retrying on its own.
-export function connectSocket({ statusEl, bannerEl, onState, onLoadError }) {
-  const socket = window.io({ transports: ['websocket', 'polling'] });
+// `role` is this screen's role; the server checks it against the login
+// cookie. If the login has expired the page reloads to its PIN screen.
+export function connectSocket({ role, statusEl, bannerEl, onState, onLoadError }) {
+  const socket = window.io({ transports: ['websocket', 'polling'], auth: { role } });
 
   function setStatus(online) {
     statusEl.textContent = online ? 'Connected' : 'Reconnecting…';
@@ -98,6 +114,9 @@ export function connectSocket({ statusEl, bannerEl, onState, onLoadError }) {
     socket.reload();
   });
   socket.on('disconnect', () => setStatus(false));
-  socket.on('connect_error', () => setStatus(false));
+  socket.on('connect_error', async (err) => {
+    setStatus(false);
+    if (err && err.message === 'unauthorized') await backToPinScreen(socket, role);
+  });
   return socket;
 }

@@ -13,7 +13,9 @@ const $ = (id) => document.getElementById(id);
 const store = new PrescriptionStore();
 let session = null;
 
+// Loaded by /shared/auth.js only after the doctor PIN is accepted.
 const socket = connectSocket({
+  role: 'doctor',
   statusEl: $('conn'),
   bannerEl: $('offline-banner'),
   onState: (state) => {
