@@ -15,6 +15,7 @@ let session = null;
 
 const socket = connectSocket({
   statusEl: $('conn'),
+  bannerEl: $('offline-banner'),
   onState: (state) => {
     $('load-error').hidden = true;
     setSession(state.session);
@@ -36,6 +37,24 @@ socket.on('prescription:new', (rx) => {
   renderList();
 });
 
+socket.on('prescription:dispensed', (rx) => {
+  if (!store.has(rx.id)) return;
+  store.upsert(rx);
+  renderList();
+});
+
+// The pharmacist ended the session: back to the start screen.
+socket.on('session:ended', (s) => {
+  if (!session || s.id !== session.id) return;
+  setSession(null);
+  store.sync(null);
+  renderList();
+  resetForm();
+  setStatus('');
+  $('ended-note').textContent = `The pharmacy ended session ${s.id} at ${formatTime(s.endedAt)}.`;
+  $('ended-note').hidden = false;
+});
+
 // ---- Session -------------------------------------------------------------
 
 function setSession(s) {
@@ -44,6 +63,7 @@ function setSession(s) {
   $('no-session').hidden = Boolean(s);
   $('session').hidden = !s;
   $('session-label').textContent = sessionLabel(s);
+  if (s) $('ended-note').hidden = true;
 }
 
 function showLoadError() {

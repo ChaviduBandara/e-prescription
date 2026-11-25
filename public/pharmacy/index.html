@@ -15,24 +15,48 @@
     <h1>Pharmacy</h1>
     <span id="session-label" class="session-label"></span>
     <button id="sound-hint" type="button" class="sound-hint" hidden>Sound is blocked. Click here to turn on alerts.</button>
+    <button id="end-session" type="button" class="btn btn--danger" hidden>End Session</button>
     <span id="conn" class="conn" role="status">Connecting…</span>
+    <p id="offline-banner" class="offline-banner" role="alert" hidden>
+      Reconnecting to the server… New prescriptions will appear when the connection is back.
+    </p>
+    <!-- Stays until clicked, so a prescription is never missed. Part of the
+         sticky header, so it never covers a card. -->
+    <div id="notice" class="notice" role="alert" hidden>
+      <span id="notice-text"></span>
+      <button id="notice-dismiss" type="button" class="notice__dismiss">OK</button>
+    </div>
   </header>
 
-  <div id="notice" class="notice" role="alert" hidden></div>
-
   <main>
-    <p id="loading" class="muted">Loading…</p>
-    <p id="load-error" class="msg msg--error" role="alert" hidden></p>
-
-    <section id="no-session" class="card waiting" hidden>
-      <p>No open session. Waiting for the doctor to start one.</p>
+    <!-- Browsers only allow sound after a click on the page, so one tap here
+         turns the alert sound on before the queue is shown. -->
+    <section id="start-gate" class="card gate">
+      <p class="gate__lead">Ready to receive prescriptions?</p>
+      <p class="muted">This turns on the alert sound for new prescriptions.</p>
+      <button id="start-receiving" type="button" class="btn btn--primary btn--xl">Start receiving</button>
     </section>
 
-    <section id="queue-section" hidden>
-      <h2 class="queue-title">Queue <span id="queue-count" class="muted"></span></h2>
-      <p id="queue-empty" class="empty card">No prescriptions yet.</p>
-      <ol id="queue" class="queue"></ol>
-    </section>
+    <div id="receiving" hidden>
+      <p id="loading" class="muted">Loading…</p>
+      <p id="load-error" class="msg msg--error" role="alert" hidden></p>
+
+      <section id="no-session" class="card waiting" hidden>
+        <p>No open session. Waiting for the doctor to start one.</p>
+        <p id="ended-note" class="muted" hidden></p>
+      </section>
+
+      <section id="queue-section" hidden>
+        <h2 class="queue-title">Waiting <span id="queue-count" class="muted"></span></h2>
+        <p id="queue-empty" class="empty card">No prescriptions waiting.</p>
+        <ol id="queue" class="queue"></ol>
+
+        <section id="dispensed-section" class="dispensed" hidden>
+          <h2 class="queue-title">Dispensed <span id="dispensed-count" class="muted"></span></h2>
+          <ol id="dispensed-list" class="queue"></ol>
+        </section>
+      </section>
+    </div>
   </main>
 
   <!-- Full-screen view of a handwritten prescription. -->
@@ -42,6 +66,18 @@
       <button id="viewer-close" type="button" class="btn btn--primary">Close</button>
     </div>
     <img id="viewer-image" class="viewer__image" alt="" />
+  </dialog>
+
+  <dialog id="end-dialog" class="confirm" aria-labelledby="end-title">
+    <h2 id="end-title">End this session?</h2>
+    <p id="end-summary"></p>
+    <p id="end-waiting" class="confirm__warn" hidden></p>
+    <p class="muted">The doctor will need to start a new session for the next patient.</p>
+    <p id="end-error" class="msg msg--error" role="alert"></p>
+    <div class="confirm__actions">
+      <button id="end-cancel" type="button" class="btn btn--secondary">Cancel</button>
+      <button id="end-confirm" type="button" class="btn btn--danger-solid">End Session</button>
+    </div>
   </dialog>
 </body>
 </html>

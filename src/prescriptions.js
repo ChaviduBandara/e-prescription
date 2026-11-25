@@ -120,6 +120,21 @@ function getPrescription(db, id) {
   return row ? toPrescription(row) : null;
 }
 
+class NotDispensableError extends Error {}
+
+// Marks a prescription dispensed. Doing it twice is not an error: the
+// second call returns { changed: false } and keeps the first time.
+function markDispensed(db, id, now = new Date()) {
+  return db.transaction(() => {
+    const row = db.prepare('SELECT p.status, s.status AS session_status FROM prescriptions p JOIN sessions s ON s.id = p.session_id WHERE p.id = ?').get(id);
+    if (!row) throw new NotDispensableError('Prescription not found.');
+    if (row.status === 'dispensed') return { prescription: getPrescription(db, id), changed: false };
+    if (row.session_status !== 'open') throw new NotDispensableError('This session has ended.');
+    db.prepare(`UPDATE prescriptions SET status = 'dispensed', dispensed_at = ? WHERE id = ?`).run(now.toISOString(), id);
+    return { prescription: getPrescription(db, id), changed: true };
+  }).immediate();
+}
+
 // Arrival order: oldest first.
 function listForSession(db, sessionId) {
   return db
@@ -134,6 +149,8 @@ module.exports = {
   getImageFile,
   getPrescription,
   listForSession,
+  markDispensed,
   NoOpenSessionError,
+  NotDispensableError,
   IMAGES_SUBDIR
 };

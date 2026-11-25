@@ -35,4 +35,23 @@ function startSession(db, now = new Date()) {
   }).immediate();
 }
 
-module.exports = { getOpenSession, getSession, startSession };
+class SessionNotOpenError extends Error {
+  constructor() {
+    super('This session is not open any more. The screen will reload.');
+  }
+}
+
+// Closes the open session `id`. Ending one that is already closed is not an
+// error (a double tap, or two screens): it returns { closed: false }.
+// Prescriptions are never touched (hard rule 4).
+function endSession(db, id, now = new Date()) {
+  return db.transaction(() => {
+    const session = getSession(db, id);
+    if (!session) throw new SessionNotOpenError();
+    if (session.status === 'closed') return { session, closed: false };
+    db.prepare(`UPDATE sessions SET status = 'closed', ended_at = ? WHERE id = ?`).run(now.toISOString(), id);
+    return { session: getSession(db, id), closed: true };
+  }).immediate();
+}
+
+module.exports = { getOpenSession, getSession, startSession, endSession, SessionNotOpenError };

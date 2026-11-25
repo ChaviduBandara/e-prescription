@@ -14,9 +14,12 @@ async function openDoctor(doctor) {
   await expect(doctor.locator('#no-session:visible, #session:visible')).toBeVisible();
 }
 
+// Opens the pharmacy screen and taps Start receiving, like the pharmacist
+// does once per page load (it unlocks the alert sound).
 async function openPharmacy(pharmacy) {
   await pharmacy.goto('/pharmacy/');
   await expect(pharmacy.locator('#conn')).toHaveText('Connected');
+  await pharmacy.getByRole('button', { name: 'Start receiving' }).click();
   await expect(pharmacy.locator('#no-session:visible, #queue-section:visible')).toBeVisible();
 }
 
@@ -71,6 +74,13 @@ async function drawAt(doctor, points, { steps = 1 } = {}) {
   if (Math.abs(after.x - box.x) > 0.5 || Math.abs(after.y - box.y) > 0.5) {
     throw new Error(`The pad moved while drawing: ${JSON.stringify(box)} -> ${JSON.stringify(after)}`);
   }
+}
+
+// Sends a typed prescription and returns its ID once the server confirms.
+async function sendTyped(doctor, patientRef, medicine = 'Test Medicine 10mg') {
+  await doctor.getByLabel('Patient ID or token').fill(patientRef);
+  await fillLine(doctor, 1, { medicine, dosage: '1 tablet', instructions: 'Twice daily' });
+  return sendAndGetId(doctor, patientRef);
 }
 
 // Switches the doctor form to Handwrite and fills the patient ref.
@@ -139,6 +149,7 @@ module.exports = {
   drawAt,
   startHandwriting,
   sendAndGetId,
+  sendTyped,
   inkAt,
   padSize
 };

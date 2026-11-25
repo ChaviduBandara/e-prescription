@@ -73,13 +73,16 @@ export class PrescriptionStore {
 // Connects Socket.IO and reloads state on every (re)connect.
 // `io` is the global from /vendor/socket.io.min.js.
 // socket.reload() fetches state again; it resolves after onState has run.
-export function connectSocket({ statusEl, onState, onLoadError }) {
+// `statusEl` shows Connected / Reconnecting…; `bannerEl` (optional) is shown
+// while the connection is down. Socket.IO keeps retrying on its own.
+export function connectSocket({ statusEl, bannerEl, onState, onLoadError }) {
   const socket = window.io({ transports: ['websocket', 'polling'] });
 
   function setStatus(online) {
-    statusEl.textContent = online ? 'Connected' : 'Offline';
+    statusEl.textContent = online ? 'Connected' : 'Reconnecting…';
     statusEl.classList.toggle('conn--online', online);
     statusEl.classList.toggle('conn--offline', !online);
+    if (bannerEl) bannerEl.hidden = online;
   }
 
   socket.reload = async () => {

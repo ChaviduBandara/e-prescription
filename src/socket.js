@@ -2,11 +2,14 @@
 // then acks the sender, then broadcasts (hard rule 3).
 'use strict';
 
-const { startSession } = require('./sessions');
+const { startSession, endSession, SessionNotOpenError } = require('./sessions');
+const { ID_PATTERN } = require('./ids');
 const {
   createTypedPrescription,
   createHandwrittenPrescription,
-  NoOpenSessionError
+  markDispensed,
+  NoOpenSessionError,
+  NotDispensableError
 } = require('./prescriptions');
 const { validatePrescription } = require('./validation');
 
@@ -49,6 +52,43 @@ function registerSocketHandlers(io, db, { dataDir }) {
       console.log(`saved ${prescription.id}`);
       reply({ ok: true, prescription });
       io.emit('prescription:new', prescription);
+    });
+
+    socket.on('prescription:dispensed', (payload, ack) => {
+      const reply = safeAck(ack);
+      const id = payload && payload.id;
+      if (typeof id !== 'string' || !ID_PATTERN.test(id)) {
+        return reply({ ok: false, error: 'Unknown prescription ID.' });
+      }
+      let result;
+      try {
+        result = markDispensed(db, id);
+      } catch (err) {
+        if (err instanceof NotDispensableError) return reply({ ok: false, error: err.message });
+        console.error('prescription:dispensed failed:', err.message);
+        return reply({ ok: false, error: 'Server error. NOT marked dispensed. Try again.' });
+      }
+      if (result.changed) console.log(`dispensed ${id}`);
+      reply({ ok: true, prescription: result.prescription });
+      if (result.changed) io.emit('prescription:dispensed', result.prescription);
+    });
+
+    // Closes the session. The PDF archive is added in phase 6.
+    socket.on('session:end', (payload, ack) => {
+      const reply = safeAck(ack);
+      const id = payload && payload.sessionId;
+      if (!Number.isSafeInteger(id) || id < 1) return reply({ ok: false, error: 'Unknown session.' });
+      let result;
+      try {
+        result = endSession(db, id);
+      } catch (err) {
+        if (err instanceof SessionNotOpenError) return reply({ ok: false, error: err.message });
+        console.error('session:end failed:', err.message);
+        return reply({ ok: false, error: 'Server error. The session is still open. Try again.' });
+      }
+      if (result.closed) console.log(`ended session ${id}`);
+      reply({ ok: true, session: result.session });
+      if (result.closed) io.emit('session:ended', result.session);
     });
   });
 }

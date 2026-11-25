@@ -19,6 +19,8 @@ test('scenario 2: typed prescription reaches the pharmacy within 1 s with an ID,
   await openDoctor(doctor);
   await ensureSession(doctor);
   await expect(pharmacy.locator('#queue-section')).toBeVisible();
+  // Start receiving unlocks sound with one muted play(); count from here.
+  const playsBefore = await pharmacy.evaluate(() => window.__alertPlays);
 
   await doctor.getByLabel('Patient ID or token').fill(patientRef);
   await fillLine(doctor, 1, { medicine: 'Test Medicine 10mg', dosage: '1 tablet', instructions: 'Twice daily' });
@@ -50,10 +52,11 @@ test('scenario 2: typed prescription reaches the pharmacy within 1 s with an ID,
   // Newest is last in the queue (arrival order).
   await expect(pharmacy.locator('#queue > li').last()).toHaveAttribute('data-rx-id', id);
 
-  // Notice and alert sound.
-  await expect(pharmacy.locator('#notice')).toBeVisible();
-  await expect(pharmacy.locator('#notice')).toContainText(id);
-  await expect.poll(() => pharmacy.evaluate(() => window.__alertPlays)).toBeGreaterThanOrEqual(1);
+  // Notice and alert sound: exactly one play() for one prescription.
+  const notice = pharmacy.locator('#notice');
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText(`New prescription ${id} for ${patientRef}`);
+  await expect.poll(() => pharmacy.evaluate(() => window.__alertPlays)).toBe(playsBefore + 1);
 
   // Doctor's list shows it as Sent, and the form is ready for the next patient.
   const item = doctor.locator(`#sent-list [data-rx-id="${id}"]`);
@@ -61,8 +64,16 @@ test('scenario 2: typed prescription reaches the pharmacy within 1 s with an ID,
   await expect(item.locator('.badge')).toHaveText('Sent');
   await expect(doctor.getByLabel('Patient ID or token')).toHaveValue('');
 
-  // A fresh pharmacy screen loads the same prescription from the server.
+  // The notice stays until the pharmacist clicks it.
+  await notice.click();
+  await expect(notice).toBeHidden();
+
+  // A fresh pharmacy screen loads the same prescription from the server
+  // once Start receiving is tapped.
   await pharmacy.reload();
+  await expect(pharmacy.getByRole('button', { name: 'Start receiving' })).toBeVisible();
+  await expect(pharmacy.locator('#queue-section')).toBeHidden();
+  await pharmacy.getByRole('button', { name: 'Start receiving' }).click();
   await expect(pharmacy.locator(`[data-rx-id="${id}"]`)).toContainText(patientRef);
 });
 

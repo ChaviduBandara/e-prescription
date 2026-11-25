@@ -50,7 +50,7 @@ development default:
 server.js        Express + Socket.IO entry point
 src/             config, db, ids, sessions, prescriptions, validation, png (handwriting checks), socket (events), api (REST)
 public/doctor/   doctor screen (pad.js: handwriting canvas; portrait only, see below)
-public/pharmacy/ pharmacist screen (image-view.js: handwriting loading/error states)
+public/pharmacy/ pharmacist screen (alerts.js: Start receiving, sound, notice; end-session.js; image-view.js: handwriting loading/error states)
 public/shared/   CSS, client.js helpers, alert.wav (regenerate: node scripts/make-alert-sound.js)
 public/vendor/   signature_pad, socket.io client (served locally, regenerated on install)
 tests/unit/      node:test
@@ -77,3 +77,21 @@ decoded, then the image. If it fails it shows "Image failed to load" with a
 Retry button, and every failed image is retried automatically when the
 connection to the server comes back. See `public/pharmacy/image-view.js` and
 `tests/e2e/pharmacy-image.spec.js`.
+
+## Pharmacy screen: daily use
+
+- **Start receiving.** Browsers block sound until the page is clicked, so
+  after every page load the pharmacist taps **Start receiving** once. This
+  turns on the alert chime (`public/shared/alert.wav`) and shows the queue.
+- **New prescriptions** play the chime and show a blue strip under the top
+  bar. It stays until it is clicked (or OK is pressed) and counts any that
+  arrived meanwhile.
+- **Dispensed** on a card moves it to the Dispensed section. The doctor's
+  list shows it as Dispensed within a second.
+- **End Session** (top right) asks for confirmation, warns if any are not
+  marked Dispensed, then closes the session. Both screens go back to their
+  start state; prescriptions stay in the database. The PDF archive is added
+  in phase 6.
+- **Connection.** Both screens show Connected / Reconnecting… at the top
+  right, and a red strip while the connection is down. They reload the
+  session and queue on their own when it comes back.

@@ -16,6 +16,9 @@
     <h1>Doctor</h1>
     <span id="session-label" class="session-label"></span>
     <span id="conn" class="conn" role="status">Connecting…</span>
+    <p id="offline-banner" class="offline-banner" role="alert" hidden>
+      Reconnecting to the pharmacy PC… Prescriptions cannot be sent until the connection is back.
+    </p>
   </header>
 
   <main>
@@ -23,6 +26,7 @@
     <p id="load-error" class="msg msg--error" role="alert" hidden></p>
 
     <section id="no-session" class="start card" hidden>
+      <p id="ended-note" class="ended-note" hidden></p>
       <p class="lead">No session is open.</p>
       <button id="start-session" type="button" class="btn btn--primary btn--xl">Start Session</button>
       <p id="start-error" class="msg msg--error" role="alert"></p>

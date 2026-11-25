@@ -115,7 +115,10 @@ test('a failed image retries by itself when the connection comes back', async ({
   fail = false;
   // Drop the transport; Socket.IO reconnects on its own.
   await pharmacy.evaluate(() => window.__socket.io.engine.close());
-  await expect(pharmacy.locator('#conn')).toHaveText('Offline');
+  // The indicator and banner say so, then clear on their own.
+  await expect(pharmacy.locator('#conn')).toHaveText('Reconnecting…');
+  await expect(pharmacy.locator('#offline-banner')).toBeVisible();
   await expect(pharmacy.locator('#conn')).toHaveText('Connected');
+  await expect(pharmacy.locator('#offline-banner')).toBeHidden();
   await expectReady(card);
 });

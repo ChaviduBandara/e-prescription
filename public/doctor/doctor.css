@@ -135,3 +135,5 @@ body { font-size: 1.15rem; }
 .pad--locked .pad__canvas { pointer-events: none; }
 .pad__tools { display: flex; gap: 0.75rem; margin-top: 0.75rem; }
 .pad__tools .btn { min-height: 56px; min-width: 120px; }
+
+.ended-note { margin: 0 0 1.25rem; padding: 0.6rem 1rem; display: inline-block; border-radius: 10px; background: var(--success-bg); color: var(--success); font-weight: 600; }
