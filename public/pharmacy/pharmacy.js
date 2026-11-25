@@ -1,6 +1,7 @@
 // Pharmacy screen: live queue of prescriptions in arrival order, with an
 // on-screen notice and an alert sound for each new one.
 import { el, formatTime, sessionLabel, connectSocket, PrescriptionStore } from '/shared/client.js';
+import { createImageView, retryFailed, forgetAll } from '/pharmacy/image-view.js';
 
 const NOTICE_MS = 8000;
 const HIGHLIGHT_MS = 15000;
@@ -16,7 +17,10 @@ const socket = connectSocket({
   onState: (state) => {
     $('load-error').hidden = true;
     setSession(state.session);
-    if (!state.session || state.session.id !== store.sessionId) imageButtons.clear();
+    if (!state.session || state.session.id !== store.sessionId) {
+      imageViews.clear();
+      forgetAll();
+    }
     store.sync(state.session && state.session.id, state.prescriptions);
     renderQueue();
   },
@@ -26,6 +30,9 @@ const socket = connectSocket({
     $('load-error').hidden = false;
   }
 });
+
+// Images that failed while the server was unreachable load again on reconnect.
+socket.on('connect', retryFailed);
 
 socket.on('session:started', (s) => {
   setSession(s);
@@ -119,30 +126,32 @@ function renderCard(rx, highlighted) {
   );
 }
 
-// Handwriting is shown as the image, exactly as drawn. The button is kept
-// across re-renders so the image is not reloaded each time one arrives.
-const imageButtons = new Map();
+// Handwriting is shown as the image, exactly as drawn, and only once it has
+// decoded (see image-view.js). Views are kept across re-renders so the image
+// is not reloaded each time a prescription arrives.
+const imageViews = new Map();
 
 function renderHandwriting(rx) {
-  if (imageButtons.has(rx.id)) return imageButtons.get(rx.id);
-  const label = `Handwritten prescription ${rx.id}`;
-  const button = el(
-    'button',
-    { type: 'button', className: 'rx-image', title: 'Tap to view full screen', 'aria-label': `${label}. Open full screen.` },
-    el('img', { src: rx.imageUrl, alt: label, decoding: 'async' })
-  );
-  button.addEventListener('click', () => openViewer(rx));
-  imageButtons.set(rx.id, button);
-  return button;
+  if (!imageViews.has(rx.id)) {
+    const view = createImageView({
+      src: rx.imageUrl,
+      alt: `Handwritten prescription ${rx.id}`,
+      onOpen: (img) => openViewer(rx, img)
+    });
+    imageViews.set(rx.id, view);
+  }
+  return imageViews.get(rx.id).element;
 }
 
 // ---- Full-screen viewer ----------------------------------------------------
 
 const viewer = $('viewer');
 
-function openViewer(rx) {
+// Opened only from a card whose image has decoded, so it reuses that image's
+// URL (already in memory) and is never blank.
+function openViewer(rx, img) {
   $('viewer-title').textContent = `${rx.id} · ${rx.patientRef}`;
-  $('viewer-image').src = rx.imageUrl;
+  $('viewer-image').src = img.getAttribute('src');
   $('viewer-image').alt = `Handwritten prescription ${rx.id}`;
   viewer.showModal();
 }

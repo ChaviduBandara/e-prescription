@@ -18,7 +18,7 @@ Paper prescriptions are walked from the doctor to the in-house pharmacy. The pha
 1. Doctor taps **Start Session**. Only one session can be open at a time.
 2. For each patient the doctor enters the **patient ID or token number** (required) and either:
    - **Typed**: one or more lines of medicine, dosage, instructions; or
-   - **Handwritten**: draws on a canvas with the stylus (with Clear and Undo).
+   - **Handwritten**: draws on a canvas with the stylus (with Clear and Undo). Handwriting works in portrait only: rotating locks the pad until it is upright again, and the drawing is kept. Typed works in any orientation.
    Then taps **Send**. The screen shows "Sent" only after the server confirms it saved.
 3. The server saves it, assigns a unique ID (`RX-YYYYMMDD-NNNN`, running number per day), and pushes it to the pharmacy screen.
 4. The pharmacy screen shows it at the bottom of the live queue with an **on-screen notice and an alert sound**.
@@ -29,6 +29,7 @@ Paper prescriptions are walked from the doctor to the in-house pharmacy. The pha
 ## Rules
 
 - Handwriting is never converted to text. It is shown and archived as the image.
+- A handwritten prescription is never shown as a blank image: the pharmacy screen shows a loading message until the image has decoded, or an error with Retry.
 - The handoff works with no internet. Only Drive's own sync needs internet.
 - Both screens reload the open session and queue on load and on reconnect.
 - A simple PIN screen per role (doctor PIN, pharmacist PIN, from config) protects each screen.

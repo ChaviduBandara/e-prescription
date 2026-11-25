@@ -93,3 +93,26 @@
 .viewer__image { flex: 1; min-height: 0; width: 100%; object-fit: contain; cursor: zoom-out; }
 /* The queue behind must not scroll (or show its scrollbar) under the viewer. */
 body:has(.viewer[open]) { overflow: hidden; }
+
+/* Handwriting not decoded yet, or failed: never an empty box (image-view.js). */
+.rx-image-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 12rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.rx-image-state__text { margin: 0; }
+.rx-image-view[data-state="error"] .rx-image-state {
+  border-style: solid;
+  border-color: var(--error);
+  background: var(--error-bg);
+  color: var(--error);
+}

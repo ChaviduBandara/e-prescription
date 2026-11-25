@@ -50,7 +50,7 @@ development default:
 server.js        Express + Socket.IO entry point
 src/             config, db, ids, sessions, prescriptions, validation, png (handwriting checks), socket (events), api (REST)
 public/doctor/   doctor screen (pad.js: handwriting canvas; portrait only, see below)
-public/pharmacy/ pharmacist screen
+public/pharmacy/ pharmacist screen (image-view.js: handwriting loading/error states)
 public/shared/   CSS, client.js helpers, alert.wav (regenerate: node scripts/make-alert-sound.js)
 public/vendor/   signature_pad, socket.io client (served locally, regenerated on install)
 tests/unit/      node:test
@@ -69,3 +69,11 @@ kept exactly as it was. Typed prescriptions work in any orientation.
 signature_pad is pinned to 5.1.7 because `public/doctor/pad.js` draws the
 final segment of each stroke that this version leaves out. Before upgrading
 it, run `npx playwright test tests/e2e/pad-marks.spec.js tests/e2e/pad-rotation.spec.js`.
+
+## Handwriting on the pharmacy screen: never blank
+
+A handwritten card shows "Loading prescription image…" until the PNG has
+decoded, then the image. If it fails it shows "Image failed to load" with a
+Retry button, and every failed image is retried automatically when the
+connection to the server comes back. See `public/pharmacy/image-view.js` and
+`tests/e2e/pharmacy-image.spec.js`.
