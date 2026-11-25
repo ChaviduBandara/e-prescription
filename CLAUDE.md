@@ -27,6 +27,9 @@ Full requirements: @docs/SPEC.md — read it before planning any phase.
 5. **No real patient data** in code, tests, fixtures, logs or screenshots. Use obviously fake data such as `TOKEN-001` and `Test Medicine 10mg`.
 6. Config (port, archive folder, PINs) comes from `config.js` / environment variables, never hardcoded paths.
 7. SQLite runs in WAL mode.
+8. The handwriting pad is portrait-only, and its bitmap is never resized while it holds strokes (see `public/doctor/pad.js` and `tests/e2e/pad-rotation.spec.js`).
+9. `signature_pad` stays pinned at 5.1.7; `pad.js` draws the final stroke segment the library leaves out. Do not upgrade it without rerunning `tests/e2e/pad-marks.spec.js` and `tests/e2e/pad-rotation.spec.js`.
+10. Never show a handwritten prescription as an empty or blank image: show a loading or error state until the image has decoded (see `public/pharmacy/image-view.js` and `tests/e2e/pharmacy-image.spec.js`).
 
 ## How to work
 

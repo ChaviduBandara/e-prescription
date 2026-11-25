@@ -50,7 +50,7 @@ development default:
 server.js        Express + Socket.IO entry point
 src/             config, db, ids, sessions, prescriptions, validation, png (handwriting checks), socket (events), api (REST)
 public/doctor/   doctor screen (pad.js: handwriting canvas; portrait only, see below)
-public/pharmacy/ pharmacist screen
+public/pharmacy/ pharmacist screen (image-view.js: loading / failed + Retry / ready states for handwriting)
 public/shared/   CSS, client.js helpers, alert.wav (regenerate: node scripts/make-alert-sound.js)
 public/vendor/   signature_pad, socket.io client (served locally, regenerated on install)
 tests/unit/      node:test

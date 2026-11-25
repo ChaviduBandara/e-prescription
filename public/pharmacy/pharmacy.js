@@ -1,6 +1,7 @@
 // Pharmacy screen: live queue of prescriptions in arrival order, with an
 // on-screen notice and an alert sound for each new one.
 import { el, formatTime, sessionLabel, connectSocket, PrescriptionStore } from '/shared/client.js';
+import { createImageView } from '/pharmacy/image-view.js';
 
 const NOTICE_MS = 8000;
 const HIGHLIGHT_MS = 15000;
@@ -16,7 +17,7 @@ const socket = connectSocket({
   onState: (state) => {
     $('load-error').hidden = true;
     setSession(state.session);
-    if (!state.session || state.session.id !== store.sessionId) imageButtons.clear();
+    if (!state.session || state.session.id !== store.sessionId) imageViews.clear();
     store.sync(state.session && state.session.id, state.prescriptions);
     renderQueue();
   },
@@ -25,6 +26,11 @@ const socket = connectSocket({
     $('load-error').textContent = 'Could not load the queue. Retrying when the connection is back.';
     $('load-error').hidden = false;
   }
+});
+
+// Back online (WiFi or server restart): load any image that failed.
+socket.on('connect', () => {
+  for (const view of imageViews.values()) view.retryIfFailed();
 });
 
 socket.on('session:started', (s) => {
@@ -119,30 +125,26 @@ function renderCard(rx, highlighted) {
   );
 }
 
-// Handwriting is shown as the image, exactly as drawn. The button is kept
-// across re-renders so the image is not reloaded each time one arrives.
-const imageButtons = new Map();
+// Handwriting is shown as the image, exactly as drawn, with a loading or
+// error state until it has decoded (see image-view.js). Views are kept
+// across re-renders so an image is not reloaded each time one arrives.
+const imageViews = new Map();
 
 function renderHandwriting(rx) {
-  if (imageButtons.has(rx.id)) return imageButtons.get(rx.id);
-  const label = `Handwritten prescription ${rx.id}`;
-  const button = el(
-    'button',
-    { type: 'button', className: 'rx-image', title: 'Tap to view full screen', 'aria-label': `${label}. Open full screen.` },
-    el('img', { src: rx.imageUrl, alt: label, decoding: 'async' })
-  );
-  button.addEventListener('click', () => openViewer(rx));
-  imageButtons.set(rx.id, button);
-  return button;
+  if (!imageViews.has(rx.id)) {
+    imageViews.set(rx.id, createImageView(rx, { onOpen: (src) => openViewer(rx, src) }));
+  }
+  return imageViews.get(rx.id).el;
 }
 
 // ---- Full-screen viewer ----------------------------------------------------
 
 const viewer = $('viewer');
 
-function openViewer(rx) {
+// `src` is the URL that already loaded, so the full-screen image is cached.
+function openViewer(rx, src) {
   $('viewer-title').textContent = `${rx.id} · ${rx.patientRef}`;
-  $('viewer-image').src = rx.imageUrl;
+  $('viewer-image').src = src;
   $('viewer-image').alt = `Handwritten prescription ${rx.id}`;
   viewer.showModal();
 }

@@ -50,6 +50,24 @@
   cursor: pointer;
 }
 
+/* Handwritten prescription: never blank. Loading and error states keep the
+   same space as the image so the queue does not jump. */
+.rx-image-view[data-image-state='loading'],
+.rx-image-view[data-image-state='error'] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  min-height: 240px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.rx-image-view__msg { margin: 0; font-size: 1.2rem; font-weight: 600; color: var(--muted); }
+.rx-image-view[data-image-state='error'] { border: 2px solid var(--error); background: var(--error-bg); }
+.rx-image-view[data-image-state='error'] .rx-image-view__msg { color: var(--error); }
+
 /* Handwritten prescription: big enough to read without opening it. */
 .rx-image {
   display: block;
