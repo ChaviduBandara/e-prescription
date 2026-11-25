@@ -34,5 +34,14 @@
       <ol id="queue" class="queue"></ol>
     </section>
   </main>
+
+  <!-- Full-screen view of a handwritten prescription. -->
+  <dialog id="viewer" class="viewer" aria-label="Handwritten prescription, full screen">
+    <div class="viewer__bar">
+      <span id="viewer-title" class="rx-id"></span>
+      <button id="viewer-close" type="button" class="btn btn--primary">Close</button>
+    </div>
+    <img id="viewer-image" class="viewer__image" alt="" />
+  </dialog>
 </body>
 </html>

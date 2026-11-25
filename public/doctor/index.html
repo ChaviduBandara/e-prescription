@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/shared/style.css" />
   <link rel="stylesheet" href="/doctor/doctor.css" />
   <script src="/vendor/socket.io.min.js"></script>
+  <script src="/vendor/signature_pad.umd.min.js"></script>
   <script type="module" src="/doctor/doctor.js"></script>
 </head>
 <body>
@@ -34,7 +35,12 @@
                maxlength="40" aria-required="true" autocapitalize="characters"
                spellcheck="false" />
 
-        <fieldset class="lines">
+        <fieldset class="mode" aria-label="How to write this prescription">
+          <label class="mode__option"><input type="radio" name="mode" value="typed" checked /> <span>Typed</span></label>
+          <label class="mode__option"><input type="radio" name="mode" value="handwritten" /> <span>Handwrite</span></label>
+        </fieldset>
+
+        <fieldset id="typed-fields" class="lines">
           <legend class="field-label">Medicines</legend>
           <div class="line line--header" aria-hidden="true">
             <span>Medicine</span><span>Dosage</span><span>Instructions</span><span></span>
@@ -42,6 +48,18 @@
           <div id="lines"></div>
           <button id="add-line" type="button" class="btn btn--secondary">+ Add line</button>
         </fieldset>
+
+        <section id="handwrite-fields" class="handwrite" hidden>
+          <div class="pad">
+            <canvas id="pad" class="pad__canvas" aria-label="Handwriting area. Draw the prescription here."></canvas>
+            <span class="pad__hint" aria-hidden="true">Write here</span>
+            <div id="pad-locked" class="pad__locked" role="alert" hidden></div>
+          </div>
+          <div class="pad__tools">
+            <button id="pad-undo" type="button" class="btn btn--secondary">Undo</button>
+            <button id="pad-clear" type="button" class="btn btn--secondary">Clear</button>
+          </div>
+        </section>
 
         <div class="send-row">
           <button id="send" type="submit" class="btn btn--primary btn--xl">Send</button>

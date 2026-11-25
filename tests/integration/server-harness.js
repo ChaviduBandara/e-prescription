@@ -34,7 +34,7 @@ async function startTestServer(t) {
     return { status: res.status, body: await res.json() };
   }
 
-  return { server, db: server.db, base, connect, getJson };
+  return { server, db: server.db, base, dataDir, connect, getJson };
 }
 
 // Resolves with the next `event` on `socket`, or rejects after `ms`.
