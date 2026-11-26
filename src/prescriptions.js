@@ -35,8 +35,8 @@ class NoOpenSessionError extends Error {
 }
 
 const INSERT = `INSERT INTO prescriptions
-  (id, session_id, patient_ref, kind, typed_body, image_path, status, created_at)
-  VALUES (@id, @sessionId, @patientRef, @kind, @typedBody, @imagePath, 'sent', @createdAt)`;
+  (id, session_id, patient_ref, kind, typed_body, image_path, status, created_at, request_id)
+  VALUES (@id, @sessionId, @patientRef, @kind, @typedBody, @imagePath, 'sent', @createdAt, @requestId)`;
 
 // Runs `write(id)` and the insert in one write transaction, so the ID read
 // and the insert cannot interleave with another send.
@@ -52,6 +52,7 @@ function insertPrescription(db, now, build) {
       createdAt: now.toISOString(),
       typedBody: null,
       imagePath: null,
+      requestId: null,
       ...fields
     });
     return getPrescription(db, id);
@@ -63,7 +64,8 @@ function createTypedPrescription(db, value, now = new Date()) {
   return insertPrescription(db, now, () => ({
     patientRef: value.patientRef,
     kind: 'typed',
-    typedBody: JSON.stringify({ lines: value.lines })
+    typedBody: JSON.stringify({ lines: value.lines }),
+    requestId: value.requestId || null
   }));
 }
 
@@ -76,7 +78,7 @@ function createHandwrittenPrescription(db, dataDir, value, now = new Date()) {
       const relative = path.posix.join(IMAGES_SUBDIR, `${id}.png`);
       written = imageFile(dataDir, relative);
       writeFileDurably(written, value.image);
-      return { patientRef: value.patientRef, kind: 'handwritten', imagePath: relative };
+      return { patientRef: value.patientRef, kind: 'handwritten', imagePath: relative, requestId: value.requestId || null };
     });
   } catch (err) {
     // The row was rolled back, so this image belongs to no prescription.
@@ -120,6 +122,12 @@ function getPrescription(db, id) {
   return row ? toPrescription(row) : null;
 }
 
+// The prescription an earlier send with this request ID saved, or null.
+function findByRequestId(db, requestId) {
+  const row = db.prepare('SELECT * FROM prescriptions WHERE request_id = ?').get(requestId);
+  return row ? toPrescription(row) : null;
+}
+
 class NotDispensableError extends Error {}
 
 // Marks a prescription dispensed. Doing it twice is not an error: the
@@ -148,6 +156,7 @@ module.exports = {
   createHandwrittenPrescription,
   getImageFile,
   getPrescription,
+  findByRequestId,
   listForSession,
   markDispensed,
   NoOpenSessionError,

@@ -242,6 +242,7 @@ async function archiveSession(db, { dataDir, archiveDir, clinicName }, sessionId
 // onChange(status) runs whenever the list of failing sessions changes.
 function createArchiver(db, options, { onChange = () => {}, firstDelayMs = RETRY_FIRST_MS, maxDelayMs = RETRY_MAX_MS } = {}) {
   const failing = new Map(); // sessionId -> { error, attempts, timer, nextRetryAt }
+  const running = new Set(); // attempts in progress, so shutdown can wait
   let closed = false;
 
   function status() {
@@ -257,7 +258,14 @@ function createArchiver(db, options, { onChange = () => {}, firstDelayMs = RETRY
 
   // One attempt now. Resolves { ok: true, session } or { ok: false, error };
   // on failure a retry is already scheduled.
-  async function archive(sessionId) {
+  function archive(sessionId) {
+    const attempt = attemptArchive(sessionId);
+    running.add(attempt);
+    attempt.finally(() => running.delete(attempt));
+    return attempt;
+  }
+
+  async function attemptArchive(sessionId) {
     const entry = failing.get(sessionId);
     if (entry) clearTimeout(entry.timer);
     try {
@@ -287,12 +295,41 @@ function createArchiver(db, options, { onChange = () => {}, firstDelayMs = RETRY
     return Promise.all(rows.map((r) => archive(r.id)));
   }
 
+  // Stops future retries. idle() resolves once attempts in progress finish.
   function close() {
     closed = true;
     for (const f of failing.values()) clearTimeout(f.timer);
   }
 
-  return { archive, archivePending, status, close };
+  function idle() {
+    return Promise.allSettled([...running]);
+  }
+
+  return { archive, archivePending, status, close, idle };
+}
+
+// Temp files left by a PDF write that was cut short (crash, power cut). They
+// are never a finished archive, and Drive would sync them, so they go.
+const PARTIAL_PATTERN = /^\..+\.pdf\.\d+\.partial$/;
+
+function removeStalePartials(archiveDir) {
+  let names;
+  try {
+    names = fs.readdirSync(archiveDir);
+  } catch {
+    return []; // no folder yet, or not reachable: nothing to tidy
+  }
+  const removed = [];
+  for (const name of names) {
+    if (!PARTIAL_PATTERN.test(name) || name.endsWith(`.${process.pid}.partial`)) continue;
+    try {
+      fs.rmSync(path.join(archiveDir, name), { force: true });
+      removed.push(name);
+    } catch (err) {
+      console.error(`could not remove stale archive temp file: ${err.code || err.message}`);
+    }
+  }
+  return removed;
 }
 
 // A short reason for the pharmacy screen, without the folder path.
@@ -309,4 +346,4 @@ function describe(err) {
   return reasons[err.code] || 'the PDF could not be written';
 }
 
-module.exports = { buildSessionPdf, archiveSession, archiveFileName, createArchiver, writeAtomically };
+module.exports = { buildSessionPdf, archiveSession, archiveFileName, createArchiver, writeAtomically, removeStalePartials };

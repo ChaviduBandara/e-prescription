@@ -20,13 +20,18 @@ function envString(name, fallback) {
 }
 
 const DATA_DIR = envString('DATA_DIR', path.join(ROOT, 'data'));
+// `npm run dev` sets NODE_ENV=development (nodemon.json). Only then are
+// there default PINs; anywhere else the server refuses to start without
+// DOCTOR_PIN and PHARMACY_PIN (see src/auth.js pinProblems).
+const DEVELOPMENT = process.env.NODE_ENV === 'development';
 
 module.exports = {
   PORT: envInt('PORT', 3000),
   DATA_DIR,
   ARCHIVE_DIR: envString('ARCHIVE_DIR', path.join(DATA_DIR, 'archive')),
-  DOCTOR_PIN: envString('DOCTOR_PIN', '1234'),
-  PHARMACY_PIN: envString('PHARMACY_PIN', '5678'),
+  DEVELOPMENT,
+  DOCTOR_PIN: envString('DOCTOR_PIN', DEVELOPMENT ? '1234' : ''),
+  PHARMACY_PIN: envString('PHARMACY_PIN', DEVELOPMENT ? '5678' : ''),
   // Printed at the top of every archive PDF.
   CLINIC_NAME: envString('CLINIC_NAME', 'Channeling Center'),
   // Optional. If unset, a random secret is created in DATA_DIR/session-secret.

@@ -38,7 +38,7 @@ Paper prescriptions are walked from the doctor to the in-house pharmacy. The pha
 ## Data
 
 - `sessions`: id, started_at, ended_at, status (`open`/`closed`), archive_file, archived_at
-- `prescriptions`: id, session_id, patient_ref, kind (`typed`/`handwritten`), typed_body (JSON), image_path, status (`sent`/`dispensed`), created_at, dispensed_at
+- `prescriptions`: id, session_id, patient_ref, kind (`typed`/`handwritten`), typed_body (JSON), image_path, status (`sent`/`dispensed`), created_at, dispensed_at, request_id (the doctor page's ID for one tap on Send, unique, so a retried send is not saved twice)
 - Handwriting PNGs live in `data/images/`; the database stores the path.
 
 ## Real-time events (Socket.IO, with acknowledgements)

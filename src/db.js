@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS prescriptions (
   image_path   TEXT,
   status       TEXT NOT NULL CHECK (status IN ('sent', 'dispensed')),
   created_at   TEXT NOT NULL,
-  dispensed_at TEXT
+  dispensed_at TEXT,
+  request_id   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS prescriptions_session
@@ -43,7 +44,18 @@ function openDb(dataDir) {
   db.pragma('synchronous = FULL');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+// Columns added after phase 1, for databases created before them.
+function migrate(db) {
+  const columns = db.prepare('PRAGMA table_info(prescriptions)').all().map((c) => c.name);
+  if (!columns.includes('request_id')) db.exec('ALTER TABLE prescriptions ADD COLUMN request_id TEXT');
+  // The doctor page's ID for one tap on Send: a retried send finds the
+  // prescription it already saved instead of making a second one.
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS prescriptions_request
+    ON prescriptions (request_id) WHERE request_id IS NOT NULL`);
 }
 
 module.exports = { openDb };

@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { createAuth, loadSecret, parseCookies, cookieName } = require('../../src/auth');
+const { createAuth, loadSecret, parseCookies, cookieName, pinProblems } = require('../../src/auth');
 const { tempDir } = require('../helpers');
 
 const PINS = { doctor: '1111', pharmacy: '2222' };
@@ -107,4 +107,14 @@ test('the secret is created once in DATA_DIR and reused; SESSION_SECRET wins', (
   assert.equal(loadSecret(dir), first);
   assert.equal(fs.readFileSync(path.join(dir, 'session-secret'), 'utf8'), first);
   assert.equal(loadSecret(dir, 'from-env'), 'from-env');
+});
+
+test('missing, too short or identical PINs are refused before any login exists', () => {
+  assert.deepEqual(pinProblems(PINS), []);
+  assert.deepEqual(pinProblems({ doctor: '', pharmacy: '2222' }), ['DOCTOR_PIN is not set.']);
+  assert.deepEqual(pinProblems({ doctor: '1111' }), ['PHARMACY_PIN is not set.']);
+  assert.match(pinProblems({ doctor: '12', pharmacy: '2222' })[0], /DOCTOR_PIN must be 4 to 32 characters/);
+  assert.match(pinProblems({ doctor: '1'.repeat(33), pharmacy: '2222' })[0], /DOCTOR_PIN must be 4/);
+  assert.deepEqual(pinProblems({ doctor: '1111', pharmacy: '1111' }), ['DOCTOR_PIN and PHARMACY_PIN must be different.']);
+  assert.throws(() => createAuth({ pins: { doctor: '', pharmacy: '' }, secret: 'test-secret' }), /PIN setup: DOCTOR_PIN is not set/);
 });

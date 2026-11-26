@@ -92,7 +92,14 @@ async function backToPinScreen(socket, role) {
 // `role` is this screen's role; the server checks it against the login
 // cookie. If the login has expired the page reloads to its PIN screen.
 export function connectSocket({ role, statusEl, bannerEl, onState, onLoadError }) {
-  const socket = window.io({ transports: ['websocket', 'polling'], auth: { role } });
+  const socket = window.io({
+    transports: ['websocket', 'polling'],
+    auth: { role },
+    // On the LAN a connect takes milliseconds. One that hangs (e.g. while
+    // the tablet's WiFi reconnects) is dropped after 5 s and tried again,
+    // instead of the default 20 s.
+    timeout: 5000
+  });
 
   function setStatus(online) {
     statusEl.textContent = online ? 'Connected' : 'Reconnecting…';
@@ -101,11 +108,16 @@ export function connectSocket({ role, statusEl, bannerEl, onState, onLoadError }
     if (bannerEl) bannerEl.hidden = online;
   }
 
+  // Reloads can overlap (a quick drop and reconnect); only the newest one's
+  // answer is used, so an older, slower reply never undoes a newer state.
+  let loads = 0;
   socket.reload = async () => {
+    const mine = ++loads;
     try {
-      onState(await fetchState());
+      const state = await fetchState();
+      if (mine === loads) onState(state);
     } catch (err) {
-      onLoadError(err);
+      if (mine === loads) onLoadError(err);
     }
   };
 

@@ -24,6 +24,9 @@ const ERRORS = {
   imageInvalid: 'The drawing could not be read. Clear it and draw again.'
 };
 
+// A random ID the doctor page makes for one tap on Send (see doctor.js).
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+
 const IMAGE_ERRORS = { blank: ERRORS.noDrawing, 'too-large': ERRORS.imageTooLarge, invalid: ERRORS.imageInvalid };
 
 function clean(value) {
@@ -32,12 +35,21 @@ function clean(value) {
 
 // Picks the validator by `kind`. A payload without `kind` is typed, as
 // sent by phase 2 screens.
+// `requestId` is optional (older screens and tests send none); when present
+// it is passed through so a retried send is recognised.
 function validatePrescription(payload) {
   if (!payload || typeof payload !== 'object') return fail(ERRORS.invalid);
+  const { requestId } = payload;
+  if (requestId !== undefined && (typeof requestId !== 'string' || !REQUEST_ID_PATTERN.test(requestId))) {
+    return fail(ERRORS.invalid);
+  }
   const kind = payload.kind === undefined ? 'typed' : payload.kind;
-  if (kind === 'typed') return validateTypedPrescription(payload);
-  if (kind === 'handwritten') return validateHandwrittenPrescription(payload);
-  return fail(ERRORS.invalid);
+  let result;
+  if (kind === 'typed') result = validateTypedPrescription(payload);
+  else if (kind === 'handwritten') result = validateHandwrittenPrescription(payload);
+  else return fail(ERRORS.invalid);
+  if (result.ok && requestId !== undefined) result.value.requestId = requestId;
+  return result;
 }
 
 // Returns the error message, or null if the patient ref is fine.

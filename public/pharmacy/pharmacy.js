@@ -13,6 +13,7 @@ const $ = (id) => document.getElementById(id);
 const store = new PrescriptionStore();
 let session = null;
 let receiving = false; // true after the Start receiving tap
+let loaded = false; // the queue has been loaded at least once
 const dispensing = new Set(); // IDs waiting for the server's ack
 const cardErrors = new Map(); // ID -> message shown on the card
 
@@ -23,10 +24,16 @@ const socket = connectSocket({
   bannerEl: $('offline-banner'),
   onState: (state) => {
     $('load-error').hidden = true;
-    if (!state.session || state.session.id !== store.sessionId) clearSession();
+    const sameSession = Boolean(state.session) && state.session.id === store.sessionId;
+    // Prescriptions saved while this screen was disconnected: announce them
+    // like live ones once the queue reloads (not on the first load).
+    const missed = loaded && sameSession ? state.prescriptions.filter((rx) => !store.has(rx.id)) : [];
+    if (!sameSession) clearSession();
     setSession(state.session);
     store.sync(state.session && state.session.id, state.prescriptions);
     renderQueue();
+    missed.forEach(notify);
+    loaded = true;
   },
   onLoadError: () => {
     $('loading').hidden = true;

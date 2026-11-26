@@ -8,12 +8,14 @@ const {
   createTypedPrescription,
   createHandwrittenPrescription,
   markDispensed,
+  findByRequestId,
   NoOpenSessionError,
   NotDispensableError
 } = require('./prescriptions');
 const { validatePrescription } = require('./validation');
 
 const SERVER_ERROR = 'Server error. The prescription was NOT saved. Try again.';
+const REQUEST_CLASH = 'This send does not match the one saved earlier. Reload the page and check the list.';
 
 // Which role may send each event. Anything else is refused with an ack.
 const PERMISSIONS = {
@@ -76,15 +78,24 @@ function registerSocketHandlers(io, db, { dataDir, auth, archiver }) {
       const reply = safeAck(ack);
       const result = validatePrescription(payload);
       if (!result.ok) return reply({ ok: false, error: result.error });
+      const { value } = result;
+
+      // A retry of a send that was saved but whose ack was lost (WiFi drop,
+      // timeout): reply with the saved prescription, save and push nothing.
+      const earlier = value.requestId && findByRequestId(db, value.requestId);
+      if (earlier) return replyDuplicate(reply, earlier, value);
 
       let prescription;
       try {
         prescription =
-          result.value.kind === 'handwritten'
-            ? createHandwrittenPrescription(db, dataDir, result.value)
-            : createTypedPrescription(db, result.value);
+          value.kind === 'handwritten'
+            ? createHandwrittenPrescription(db, dataDir, value)
+            : createTypedPrescription(db, value);
       } catch (err) {
         if (err instanceof NoOpenSessionError) return reply({ ok: false, error: err.message });
+        // The same request saved in the meantime (the unique index caught it).
+        const saved = value.requestId && findByRequestId(db, value.requestId);
+        if (saved) return replyDuplicate(reply, saved, value);
         console.error('prescription:new failed:', err.message);
         return reply({ ok: false, error: SERVER_ERROR });
       }
@@ -139,6 +150,15 @@ function registerSocketHandlers(io, db, { dataDir, auth, archiver }) {
       if (result.closed) io.emit('session:ended', session);
     });
   });
+}
+
+function replyDuplicate(reply, saved, value) {
+  if (saved.patientRef !== value.patientRef || saved.kind !== value.kind) {
+    console.error(`request ID clash with ${saved.id}`);
+    return reply({ ok: false, error: REQUEST_CLASH });
+  }
+  console.log(`repeated send of ${saved.id}, not saved again`);
+  reply({ ok: true, prescription: saved, repeated: true });
 }
 
 function safeAck(ack) {

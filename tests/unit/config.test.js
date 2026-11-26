@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const path = require('path');
 
 const CONFIG_PATH = require.resolve('../../src/config');
-const KEYS = ['PORT', 'DATA_DIR', 'ARCHIVE_DIR', 'DOCTOR_PIN', 'PHARMACY_PIN', 'SESSION_SECRET'];
+const KEYS = ['PORT', 'DATA_DIR', 'ARCHIVE_DIR', 'DOCTOR_PIN', 'PHARMACY_PIN', 'SESSION_SECRET', 'NODE_ENV'];
 
 // Load a fresh copy of config.js with the given env vars set (others unset).
 function loadConfig(env = {}) {
@@ -58,4 +58,15 @@ test('config falls back to the default port when PORT is not a number', () => {
 test('SESSION_SECRET is optional and read from the environment', () => {
   assert.equal(loadConfig().SESSION_SECRET, '');
   assert.equal(loadConfig({ SESSION_SECRET: 'test-only-secret' }).SESSION_SECRET, 'test-only-secret');
+});
+
+test('there are no default PINs outside development (npm run dev)', () => {
+  const clinic = loadConfig();
+  assert.equal(clinic.DOCTOR_PIN, '');
+  assert.equal(clinic.PHARMACY_PIN, '');
+  assert.equal(loadConfig({ NODE_ENV: 'production' }).DOCTOR_PIN, '');
+  const dev = loadConfig({ NODE_ENV: 'development' });
+  assert.equal(dev.DEVELOPMENT, true);
+  assert.notEqual(dev.DOCTOR_PIN, '');
+  assert.notEqual(dev.DOCTOR_PIN, dev.PHARMACY_PIN);
 });

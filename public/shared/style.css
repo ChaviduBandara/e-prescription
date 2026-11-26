@@ -135,6 +135,7 @@ main { padding: 1.25rem; max-width: 1200px; margin: 0 auto; }
 .msg { margin: 0; font-weight: 600; min-height: 1.4em; }
 .msg--success { color: var(--success); }
 .msg--error { color: var(--error); }
+.msg--waiting { color: #7a4f00; font-weight: 700; }
 
 .badge {
   display: inline-block;

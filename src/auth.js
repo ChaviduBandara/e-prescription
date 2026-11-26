@@ -16,6 +16,24 @@ const LOGIN_MS = 24 * 60 * 60 * 1000; // a clinic day, with margin
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 60 * 1000;
 const MAX_PIN_LENGTH = 32;
+const MIN_PIN_LENGTH = 4;
+const PIN_ENV = { doctor: 'DOCTOR_PIN', pharmacy: 'PHARMACY_PIN' };
+
+// Why these PINs are not safe to run with: [] if they are fine. Missing
+// PINs would leave a screen open to anyone on the WiFi; equal PINs would let
+// the doctor's PIN open the pharmacy screen too.
+function pinProblems(pins = {}) {
+  const problems = [];
+  for (const role of ROLES) {
+    const pin = pins[role];
+    if (typeof pin !== 'string' || pin === '') problems.push(`${PIN_ENV[role]} is not set.`);
+    else if (pin.length < MIN_PIN_LENGTH || pin.length > MAX_PIN_LENGTH) {
+      problems.push(`${PIN_ENV[role]} must be ${MIN_PIN_LENGTH} to ${MAX_PIN_LENGTH} characters.`);
+    }
+  }
+  if (!problems.length && pins.doctor === pins.pharmacy) problems.push('DOCTOR_PIN and PHARMACY_PIN must be different.');
+  return problems;
+}
 
 const cookieName = (role) => `rx_${role}`;
 
@@ -61,6 +79,8 @@ function parseCookies(header) {
 
 // pins: { doctor, pharmacy }. Options exist so tests can shorten time.
 function createAuth({ pins, secret, now = Date.now, lockoutMs = LOCKOUT_MS, loginMs = LOGIN_MS }) {
+  const problems = pinProblems(pins);
+  if (problems.length) throw new Error(`PIN setup: ${problems.join(' ')} Set them before starting the server (see README).`);
   const failures = new Map(); // `${role}|${client}` -> { count, lockedUntil }
 
   function sign(role, issuedAt) {
@@ -135,4 +155,4 @@ function createAuth({ pins, secret, now = Date.now, lockoutMs = LOCKOUT_MS, logi
   return { login, verify, rolesFromCookieHeader, issue };
 }
 
-module.exports = { createAuth, loadSecret, parseCookies, cookieName, ROLES, MAX_ATTEMPTS, LOCKOUT_MS };
+module.exports = { createAuth, loadSecret, parseCookies, cookieName, pinProblems, ROLES, MAX_ATTEMPTS, LOCKOUT_MS };

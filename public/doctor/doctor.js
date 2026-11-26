@@ -4,6 +4,7 @@ import { el, formatTime, sessionLabel, connectSocket, PrescriptionStore } from '
 import { createPad } from '/doctor/pad.js';
 
 const ACK_TIMEOUT_MS = 15000; // a handwriting PNG can take a moment on slow WiFi
+const RETRY_MS = 3000; // after a timeout while still connected
 // Must match src/validation.js and src/png.js.
 const PATIENT_ERROR = 'Patient ID or token number is required.';
 const NO_DRAWING_ERROR = 'Draw the prescription before sending.';
@@ -193,14 +194,36 @@ function setStatus(text, kind) {
 
 $('add-line').addEventListener('click', () => addLine().querySelector('input').focus());
 
+// ---- Sending ---------------------------------------------------------------
+// One tap on Send gets one random request ID. Until the server confirms,
+// the form is locked and the same payload and ID are sent again after a
+// timeout or a reconnect. The server recognises the ID and replies with
+// the prescription it already saved, so a retry never makes a second one.
+
+const WAITING_OFFLINE =
+  'NOT sent yet: no connection to the pharmacy PC. It will send by itself when the connection is back. Keep this page open.';
+const WAITING_NO_REPLY = 'No reply from the pharmacy PC yet. Trying again by itself; it will not be sent twice.';
+
+let pending = null; // { payload, attempts, timer }: a send not yet confirmed
+
+// crypto.randomUUID() needs https; the tablet uses plain http on the LAN.
+function newRequestId() {
+  return [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// While a send waits, the doctor cannot change what is being sent.
+function lockForm(locked) {
+  for (const id of ['patient-ref', 'typed-fields', 'handwrite-fields']) $(id).inert = locked;
+  document.querySelector('.mode').inert = locked;
+  $('rx-form').classList.toggle('rx-form--waiting', locked);
+  $('send').disabled = locked;
+  $('send').textContent = locked ? 'Sending…' : 'Send';
+}
+
 $('rx-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const send = $('send');
-  if (send.disabled) return; // a send is already in flight
-  if (!socket.connected) {
-    setStatus('Offline: NOT sent. Check the WiFi and try again.', 'error');
-    return;
-  }
+  if (send.disabled || pending) return; // a send is already in flight
   $('patient-ref').removeAttribute('aria-invalid');
   pad.markInvalid(false);
 
@@ -211,21 +234,40 @@ $('rx-form').addEventListener('submit', async (event) => {
     send.disabled = false;
     return showFormError(problem);
   }
-  setStatus('Sending…');
+  pending = { payload: { ...payload, requestId: newRequestId() }, attempts: 0, timer: null };
+  lockForm(true);
+  trySend();
+});
 
-  socket.timeout(ACK_TIMEOUT_MS).emit('prescription:new', payload, (err, res) => {
-    send.disabled = false;
+function trySend() {
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  if (!socket.connected) return setStatus(WAITING_OFFLINE, 'waiting'); // 'connect' calls trySend
+  const current = pending;
+  const attempt = ++current.attempts;
+  if (attempt === 1) setStatus('Sending…');
+  socket.timeout(ACK_TIMEOUT_MS).emit('prescription:new', current.payload, (err, res) => {
+    // A newer attempt (after a reconnect) has taken over from this one.
+    if (pending !== current || current.attempts !== attempt) return;
     if (err) {
-      setStatus('No reply from the pharmacy PC. Check the list below before sending again.', 'error');
+      setStatus(socket.connected ? WAITING_NO_REPLY : WAITING_OFFLINE, 'waiting');
+      if (socket.connected) current.timer = setTimeout(trySend, RETRY_MS);
       return;
     }
+    pending = null;
+    lockForm(false);
     if (!res.ok) return showFormError(res.error);
     store.upsert(res.prescription);
     renderList();
     setStatus(`Sent ${res.prescription.id} (${res.prescription.patientRef})`, 'success');
     resetForm();
   });
-});
+}
+
+// Back online: send the waiting prescription again straight away, without
+// waiting for the old attempt to time out.
+socket.on('connect', trySend);
+socket.on('disconnect', () => pending && setStatus(WAITING_OFFLINE, 'waiting'));
 
 // ---- List ------------------------------------------------------------------
 
