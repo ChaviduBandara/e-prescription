@@ -177,3 +177,17 @@ test('a refused event never reaches the other screen', async (t) => {
   await new Promise((r) => setTimeout(r, 200));
   assert.deepEqual(leaked, []);
 });
+
+test('login: too many wrong PINs for one role lock that screen for every device, then it opens again', async (t) => {
+  // Smaller numbers than the real 20 / 5 minutes, same rule.
+  const { login } = await startTestServer(t, { authOptions: { roleMaxFailures: 3, roleLockoutMs: 400 } });
+  assert.equal((await login('doctor', '0000')).status, 401);
+  assert.equal((await login('doctor', '0000')).status, 401);
+  const third = await login('doctor', '0000');
+  assert.equal(third.status, 429, 'locked before the per-device limit of 5');
+  assert.match(third.body.error, /Too many wrong PINs for this screen/);
+  assert.equal((await login('doctor')).status, 429, 'even the right PIN');
+  assert.equal((await login('pharmacy')).status, 200, 'the pharmacy screen is not locked');
+  await new Promise((r) => setTimeout(r, 450));
+  assert.equal((await login('doctor')).status, 200);
+});

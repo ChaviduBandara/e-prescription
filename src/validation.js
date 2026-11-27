@@ -36,19 +36,23 @@ function clean(value) {
 // Picks the validator by `kind`. A payload without `kind` is typed, as
 // sent by phase 2 screens.
 // `requestId` is optional (older screens and tests send none); when present
-// it is passed through so a retried send is recognised.
+// it is passed through so a retried send is recognised. `sessionId` is
+// optional too: the session the doctor was in when tapping Send, so a send
+// that arrives after that session ended is refused, not filed in a new one.
 function validatePrescription(payload) {
   if (!payload || typeof payload !== 'object') return fail(ERRORS.invalid);
-  const { requestId } = payload;
+  const { requestId, sessionId } = payload;
   if (requestId !== undefined && (typeof requestId !== 'string' || !REQUEST_ID_PATTERN.test(requestId))) {
     return fail(ERRORS.invalid);
   }
+  if (sessionId !== undefined && !(Number.isSafeInteger(sessionId) && sessionId > 0)) return fail(ERRORS.invalid);
   const kind = payload.kind === undefined ? 'typed' : payload.kind;
   let result;
   if (kind === 'typed') result = validateTypedPrescription(payload);
   else if (kind === 'handwritten') result = validateHandwrittenPrescription(payload);
   else return fail(ERRORS.invalid);
   if (result.ok && requestId !== undefined) result.value.requestId = requestId;
+  if (result.ok && sessionId !== undefined) result.value.sessionId = sessionId;
   return result;
 }
 

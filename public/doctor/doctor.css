@@ -137,6 +137,7 @@ body { font-size: 1.15rem; }
 .pad__tools .btn { min-height: 56px; min-width: 120px; }
 
 .ended-note { margin: 0 0 1.25rem; padding: 0.6rem 1rem; display: inline-block; border-radius: 10px; background: var(--success-bg); color: var(--success); font-weight: 600; }
+.unsent-note { max-width: 34rem; margin: 0 auto 1.25rem; padding: 0.75rem 1rem; border-radius: 10px; background: var(--error-bg); font-weight: 700; }
 
 /* A send waiting for the server's reply: the fields are locked (inert). */
 .rx-form--waiting [inert] { opacity: 0.55; }

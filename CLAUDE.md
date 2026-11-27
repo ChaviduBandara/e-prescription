@@ -44,7 +44,8 @@ Full requirements: @docs/SPEC.md — read it before planning any phase.
 
 ```
 server.js        Express + Socket.IO entry point
-src/             db.js, ids.js, archive.js, sessions.js, config.js
+src/             db.js, ids.js, archive.js, pdf-text.js, sessions.js, config.js
+src/fonts/       Noto Sans Sinhala / Tamil for the archive PDF (OFL, bundled)
 public/doctor/   doctor screen
 public/pharmacy/ pharmacist screen
 public/shared/   CSS, alert sound

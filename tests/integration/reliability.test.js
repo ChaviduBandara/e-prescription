@@ -94,6 +94,53 @@ test('a reused request ID with a different patient is refused, and a malformed o
   assert.equal(count(db), 1);
 });
 
+// ---- Session the send was made in -------------------------------------------
+
+const SESSION_ENDED = 'The session ended before this was sent. Start a new session and send again.';
+
+test('a send made in a session that has since ended is refused, even if a new session is open', async (t) => {
+  const { db, doctor, pharmacy, session, send } = await openSession(t);
+  const current = await send({ ...fakeTyped({ patientRef: 'TOKEN-201' }), sessionId: session.id, requestId: requestId() });
+  assert.equal(current.ok, true, 'a send in the open session works');
+
+  await pharmacy.timeout(ACK_MS).emitWithAck('session:end', { sessionId: session.id });
+  const late = { ...fakeTyped({ patientRef: 'TOKEN-202' }), sessionId: session.id, requestId: requestId() };
+  const noSession = await send(late);
+  assert.deepEqual(noSession, { ok: false, code: 'SESSION_ENDED', error: SESSION_ENDED });
+
+  const { session: next } = await doctor.timeout(ACK_MS).emitWithAck('session:start', {});
+  const quiet = noEvent(pharmacy, 'prescription:new', 300);
+  const wrongSession = await send(late);
+  assert.deepEqual(wrongSession, { ok: false, code: 'SESSION_ENDED', error: SESSION_ENDED });
+  const drawn = await send({ ...fakeHandwritten({ patientRef: 'TOKEN-203', image: makePng({ width: 300, height: 400 }) }), sessionId: session.id });
+  assert.equal(drawn.code, 'SESSION_ENDED');
+  assert.equal(await quiet, true, 'the pharmacy is not told');
+  assert.equal(count(db), 1, 'nothing filed in the new session');
+
+  // Sent again from the new session it is saved there.
+  const again = await send({ ...late, sessionId: next.id, requestId: requestId() });
+  assert.equal(again.ok, true);
+  assert.equal(again.prescription.sessionId, next.id);
+});
+
+test('a retry of a send saved before its session ended still gets its prescription back', async (t) => {
+  const { pharmacy, session, send } = await openSession(t);
+  const payload = { ...fakeTyped({ patientRef: 'TOKEN-204' }), sessionId: session.id, requestId: requestId() };
+  const first = await send(payload);
+  await pharmacy.timeout(ACK_MS).emitWithAck('session:end', { sessionId: session.id });
+  const retry = await send(payload);
+  assert.equal(retry.ok, true);
+  assert.equal(retry.prescription.id, first.prescription.id);
+});
+
+test('a malformed session ID is rejected', async (t) => {
+  const { db, send } = await openSession(t);
+  for (const bad of [0, -1, 1.5, '1', null, 2 ** 60]) {
+    assert.equal((await send({ ...fakeTyped(), sessionId: bad })).ok, false, String(bad));
+  }
+  assert.equal(count(db), 0);
+});
+
 // ---- Graceful shutdown -------------------------------------------------------
 
 test('SIGINT/SIGTERM close the sockets and the database, exit 0, and the data opens again', async (t) => {

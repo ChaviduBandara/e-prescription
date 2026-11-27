@@ -18,8 +18,10 @@ npx playwright install chromium webkit   # once, for the e2e tests
 
 The e2e tests start their own server on a free port with a throwaway
 `DATA_DIR` and `ARCHIVE_DIR` in the OS temp folder, so they never touch
-`data/`. Use the `doctor` (1024x1366, touch) and `pharmacy` (1366x768) pages
-from `tests/e2e/fixtures.js` in new specs.
+`data/`. When the run ends, `tests/e2e/global-teardown.js` tells that server
+(`tests/e2e/web-server.js`) to close and delete the temp folder, so no data
+or server process is left behind. Use the `doctor` (1024x1366, touch) and
+`pharmacy` (1366x768) pages from `tests/e2e/fixtures.js` in new specs.
 
 ## Commands
 
@@ -50,12 +52,14 @@ default except the PINs, which only have one in development mode:
 
 ```
 server.js        Express + Socket.IO entry point
-src/             config, db, ids, sessions, prescriptions, validation, png (handwriting checks), auth (PIN login), archive (session PDF), socket (events), api (REST)
+src/             config, db, ids, sessions, prescriptions, validation, png (handwriting checks), auth (PIN login), archive (session PDF), pdf-text (Sinhala/Tamil/Latin text in the PDF), socket (events), api (REST)
+src/fonts/       Noto Sans Sinhala and Noto Sans Tamil for the archive PDF (SIL Open Font License, see src/fonts/README.md)
 public/doctor/   doctor screen (pad.js: handwriting canvas; portrait only, see below)
 public/pharmacy/ pharmacist screen (alerts.js: Start receiving, sound, notice; end-session.js; image-view.js: handwriting loading/error states)
 public/shared/   CSS, client.js helpers, auth.js (PIN screen), alert.wav (regenerate: node scripts/make-alert-sound.js)
 public/vendor/   signature_pad, socket.io client (served locally, regenerated on install)
 tests/server-process.js  runs `node server.js` as a separate process, to kill it hard and restart it
+tests/e2e/web-server.js, global-teardown.js  the e2e run's server, and its clean-up
 tests/unit/      node:test
 tests/integration/  node:test with socket.io-client
 tests/e2e/       Playwright specs
@@ -110,7 +114,14 @@ Each screen opens on a PIN screen. The right PIN (`DOCTOR_PIN` or
 - Every Socket.IO connection needs one too. The doctor can only start
   sessions and send prescriptions; the pharmacy can only mark Dispensed
   and end sessions.
-- 5 wrong PINs lock that role out on that device for 1 minute.
+- 5 wrong PINs lock that role out on that device (IP address) for 1 minute.
+- 20 wrong PINs for one role within 10 minutes, from any devices, lock that
+  role out on every device for 5 minutes ("Too many wrong PINs for this
+  screen"), even with the right PIN. The other screen is not affected. This
+  stops guessing from a device that keeps changing its IP address. The
+  server logs a warning when it happens.
+- The per-device table forgets devices after 10 quiet minutes and holds at
+  most 1000, so it cannot grow without limit.
 - Changing a PIN (and restarting the server) logs that role out everywhere.
   So does deleting `DATA_DIR/session-secret`.
 
@@ -126,7 +137,26 @@ page width, never stretched, always on the same page as its ID).
 - The PDF is written to a hidden `.…partial` file in the same folder, flushed
   to disk and then renamed, so Google Drive never syncs a half-written file.
 - An existing file is never overwritten; a clash (e.g. after starting a new
-  database) gets `_2`, `_3` … added.
+  database) gets `_2`, `_3` … added. A session always makes the same PDF
+  bytes (it is dated by the session, not the clock), so if the server died
+  after writing the file but before recording it, the identical file already
+  there is recorded instead of writing a `_2` copy.
+- **Sinhala and Tamil.** Typed text, patient refs and the clinic name are
+  printed per run of text: Latin in Helvetica, Sinhala and Tamil in the
+  bundled Noto Sans fonts (`src/fonts/`, nothing downloaded). Shaping is done
+  by pdfkit's fontkit, checked by rendering sample pages:
+  - Tamil, and Sinhala vowel signs, conjuncts, yansaya and rakaransaya
+    (ශ්‍රී, ක්‍ර, ප්‍ර) print correctly. fontkit gives some Sinhala mark
+    glyphs their own width, leaving a gap after ක්‍ර, ශ්‍රී …;
+    `src/pdf-text.js` gives marks zero width as browsers (HarfBuzz) do, for
+    the Sinhala fonts only.
+  - **Known limit:** the repaya form (ර් + ZWJ + consonant, as in ධර්‍ම) is
+    not formed; it prints as ර් followed by the consonant (ධර්ම), which reads
+    the same.
+  - A character none of the fonts can print (emoji, arrows, Chinese …) is
+    printed as a red `?` and the prescription gets a red line naming it, e.g.
+    "Some characters could not be printed (shown as ?): U+2192 … Check
+    RX-… in the e-Prescription system." Nothing is dropped silently.
 - If the folder cannot be written (Drive not running, disk full, …) the
   session still closes and nothing is lost. The pharmacy screen shows a
   yellow warning, and the server retries after 5 s, 10 s, 20 s … up to every
@@ -141,8 +171,19 @@ page width, never stretched, always on the same page as its ID).
   "No reply yet". The page sends the same prescription and ID again after a
   timeout or as soon as the connection is back. The server stores the ID
   (`request_id`, unique) and answers a repeat with the prescription it
-  already saved, so nothing is saved or announced twice. Closing the page
-  while it waits drops that send; the list shows what was really saved.
+  already saved, so nothing is saved or announced twice.
+- **A waiting send survives a reload.** Until the server replies, the send
+  (exact payload, handwriting PNG and request ID) is kept in the tab's
+  `sessionStorage`. If the page is reloaded it is put back in the form, the
+  drawing redrawn at the same size, and sent again with the same ID; it is
+  removed from storage as soon as the server replies. If the tablet cannot
+  store it (storage full), the status says the send will be lost on reload.
+  Closing the tab drops it; the list shows what was really saved.
+- **A late send never lands in the wrong session.** The tablet sends the ID
+  of the session it was in. If that session has ended by the time the send
+  arrives, the server refuses it ("The session ended before this was sent.
+  Start a new session and send again.") and the prescription stays filled in
+  on the tablet, also after Start Session, to be sent in the new session.
 - **Resync.** Both screens reload the open session and queue on every
   reconnect. The pharmacy announces prescriptions it only learns about
   through that reload, like live ones.

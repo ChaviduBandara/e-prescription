@@ -118,3 +118,44 @@ test('missing, too short or identical PINs are refused before any login exists',
   assert.deepEqual(pinProblems({ doctor: '1111', pharmacy: '1111' }), ['DOCTOR_PIN and PHARMACY_PIN must be different.']);
   assert.throws(() => createAuth({ pins: { doctor: '', pharmacy: '' }, secret: 'test-secret' }), /PIN setup: DOCTOR_PIN is not set/);
 });
+
+test('20 wrong PINs for one role from many IPs lock that role everywhere for 5 minutes', () => {
+  const { auth, clock } = makeAuth();
+  for (let i = 1; i < 20; i++) assert.equal(auth.login('doctor', '0000', `ip-${i}`).status, 401, `try ${i}`);
+  const twentieth = auth.login('doctor', '0000', 'ip-20');
+  assert.equal(twentieth.status, 429);
+  assert.match(twentieth.error, /for this screen/);
+  assert.equal(twentieth.retryAfter, 300);
+
+  // The right PIN from a device that never guessed is refused too...
+  const fresh = auth.login('doctor', '1111', 'ip-new');
+  assert.equal(fresh.status, 429);
+  assert.match(fresh.error, /Too many wrong PINs for this screen/);
+  // ...but the other screen is not affected.
+  assert.equal(auth.login('pharmacy', '2222', 'ip-new').ok, true);
+
+  clock.t += 299_000;
+  assert.equal(auth.login('doctor', '1111', 'ip-new').status, 429);
+  clock.t += 1_000;
+  assert.equal(auth.login('doctor', '1111', 'ip-new').ok, true);
+});
+
+test('role failures older than 10 minutes do not count toward the role lock', () => {
+  const { auth, clock } = makeAuth();
+  for (let i = 0; i < 19; i++) auth.login('doctor', '0000', `ip-${i}`);
+  clock.t += 10 * 60 * 1000;
+  for (let i = 0; i < 19; i++) assert.equal(auth.login('doctor', '0000', `ip-b${i}`).status, 401);
+  assert.equal(auth.login('doctor', '1111', 'ip-new').ok, true);
+});
+
+test('the per-IP lockout table is pruned and capped', () => {
+  const { auth, clock } = makeAuth({ roleMaxFailures: Infinity });
+  for (let i = 0; i < 5000; i++) auth.login('doctor', '0000', `ip-${i}`);
+  assert.ok(auth.trackedClients() <= 1000, `holds ${auth.trackedClients()}`);
+  // Recent devices are still remembered: ip-4999 has had 1 wrong PIN.
+  assert.match(auth.login('doctor', '0000', 'ip-4999').error, /3 tries left/);
+  // Idle entries are dropped after 10 minutes.
+  clock.t += 10 * 60 * 1000;
+  auth.login('pharmacy', '2222', 'ip-x');
+  assert.equal(auth.trackedClients(), 0);
+});

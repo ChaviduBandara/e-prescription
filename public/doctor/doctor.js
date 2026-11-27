@@ -46,14 +46,18 @@ socket.on('prescription:dispensed', (rx) => {
   renderList();
 });
 
-// The pharmacist ended the session: back to the start screen.
+// The pharmacist ended the session: back to the start screen. A send still
+// waiting, or one refused because its session ended, keeps the form as it
+// is, so the doctor can send it again in the next session.
 socket.on('session:ended', (s) => {
   if (!session || s.id !== session.id) return;
   setSession(null);
   store.sync(null);
   renderList();
-  resetForm();
-  setStatus('');
+  if (!pending && !unsent) {
+    resetForm();
+    setStatus('');
+  }
   $('ended-note').textContent = `The pharmacy ended session ${s.id} at ${formatTime(s.endedAt)}.`;
   $('ended-note').hidden = false;
 });
@@ -67,6 +71,7 @@ function setSession(s) {
   $('session').hidden = !s;
   $('session-label').textContent = sessionLabel(s);
   if (s) $('ended-note').hidden = true;
+  if (s && mode() === 'handwritten') pad.fit(); // e.g. a drawing put back after a reload
 }
 
 function showLoadError() {
@@ -92,7 +97,7 @@ $('start-session').addEventListener('click', () => {
     setSession(res.session);
     store.sync(res.session.id);
     renderList();
-    resetForm();
+    if (!unsent) resetForm(); // a refused send stays filled in, to send again
   });
 });
 
@@ -132,12 +137,15 @@ function mode() {
 }
 
 // Switching keeps what was typed or drawn in the other mode.
+function showMode() {
+  const handwritten = mode() === 'handwritten';
+  $('typed-fields').hidden = handwritten;
+  $('handwrite-fields').hidden = !handwritten;
+  if (handwritten) pad.fit(); // the canvas has no size while hidden
+}
 for (const radio of document.querySelectorAll('input[name=mode]')) {
   radio.addEventListener('change', () => {
-    const handwritten = mode() === 'handwritten';
-    $('typed-fields').hidden = handwritten;
-    $('handwrite-fields').hidden = !handwritten;
-    if (handwritten) pad.fit(); // the canvas has no size while hidden
+    showMode();
     setStatus('');
   });
 }
@@ -186,6 +194,22 @@ function resetForm() {
   pad.clear();
 }
 
+// Puts a saved send back into the form (see restoreWaitingSend).
+function fillForm(payload, padSnapshot) {
+  document.querySelector(`input[name=mode][value=${payload.kind}]`).checked = true;
+  $('patient-ref').value = payload.patientRef;
+  if (payload.kind === 'handwritten') {
+    pad.load(padSnapshot);
+  } else {
+    $('lines').replaceChildren();
+    for (const line of payload.lines) {
+      const row = addLine();
+      for (const name of ['medicine', 'dosage', 'instructions']) row.querySelector(`[name=${name}]`).value = line[name];
+    }
+  }
+  showMode();
+}
+
 function setStatus(text, kind) {
   const status = $('send-status');
   status.textContent = text;
@@ -203,8 +227,74 @@ $('add-line').addEventListener('click', () => addLine().querySelector('input').f
 const WAITING_OFFLINE =
   'NOT sent yet: no connection to the pharmacy PC. It will send by itself when the connection is back. Keep this page open.';
 const WAITING_NO_REPLY = 'No reply from the pharmacy PC yet. Trying again by itself; it will not be sent twice.';
+const NOT_KEPT = ' This waiting send will be lost if the page is reloaded.';
 
-let pending = null; // { payload, attempts, timer }: a send not yet confirmed
+let pending = null; // { payload, attempts, timer, kept }: a send not yet confirmed
+let unsent = false; // the last send was refused because its session ended
+
+function setWaiting(text) {
+  setStatus(text + (pending && !pending.kept ? NOT_KEPT : ''), 'waiting');
+}
+
+// ---- A waiting send survives a reload ----------------------------------------
+// Until the server replies, the send (the exact payload, PNG bytes and
+// request ID included) is kept in sessionStorage, which belongs to this tab
+// only. On load it is put back and sent again; the request ID makes sure it
+// is saved once. It is removed as soon as the server replies.
+
+const WAITING_KEY = 'rx-pending-send';
+
+function keepWaitingSend(payload) {
+  const image = payload.image ? bytesToBase64(payload.image) : undefined;
+  const padSnapshot = payload.kind === 'handwritten' ? pad.snapshot() : undefined;
+  try {
+    sessionStorage.setItem(WAITING_KEY, JSON.stringify({ payload: { ...payload, image }, pad: padSnapshot }));
+    return true;
+  } catch {
+    return false; // storage full or blocked: the send still goes, just not across a reload
+  }
+}
+
+function forgetWaitingSend() {
+  try {
+    sessionStorage.removeItem(WAITING_KEY);
+  } catch {
+    // nothing kept
+  }
+}
+
+function restoreWaitingSend() {
+  let saved = null;
+  try {
+    saved = JSON.parse(sessionStorage.getItem(WAITING_KEY));
+  } catch {
+    saved = null;
+  }
+  if (!saved || !saved.payload) return;
+  const payload = { ...saved.payload };
+  if (payload.image) payload.image = base64ToBytes(payload.image);
+  fillForm(payload, saved.pad);
+  pending = { payload, attempts: 0, timer: null, kept: true };
+  lockForm(true);
+  trySend(); // or on 'connect'
+}
+
+function bytesToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let text = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(text);
+}
+
+function base64ToBytes(base64) {
+  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)).buffer;
+}
+
+function showUnsent(message) {
+  unsent = Boolean(message);
+  $('unsent-note').textContent = message || '';
+  $('unsent-note').hidden = !message;
+}
 
 // crypto.randomUUID() needs https; the tablet uses plain http on the LAN.
 function newRequestId() {
@@ -234,7 +324,11 @@ $('rx-form').addEventListener('submit', async (event) => {
     send.disabled = false;
     return showFormError(problem);
   }
-  pending = { payload: { ...payload, requestId: newRequestId() }, attempts: 0, timer: null };
+  // The session it is sent in: if that session has ended by the time it
+  // arrives, the server refuses it instead of filing it in another one.
+  const sending = { ...payload, requestId: newRequestId(), sessionId: session ? session.id : undefined };
+  pending = { payload: sending, attempts: 0, timer: null, kept: false };
+  pending.kept = keepWaitingSend(sending);
   lockForm(true);
   trySend();
 });
@@ -242,7 +336,7 @@ $('rx-form').addEventListener('submit', async (event) => {
 function trySend() {
   if (!pending) return;
   clearTimeout(pending.timer);
-  if (!socket.connected) return setStatus(WAITING_OFFLINE, 'waiting'); // 'connect' calls trySend
+  if (!socket.connected) return setWaiting(WAITING_OFFLINE); // 'connect' calls trySend
   const current = pending;
   const attempt = ++current.attempts;
   if (attempt === 1) setStatus('Sending…');
@@ -250,13 +344,19 @@ function trySend() {
     // A newer attempt (after a reconnect) has taken over from this one.
     if (pending !== current || current.attempts !== attempt) return;
     if (err) {
-      setStatus(socket.connected ? WAITING_NO_REPLY : WAITING_OFFLINE, 'waiting');
+      setWaiting(socket.connected ? WAITING_NO_REPLY : WAITING_OFFLINE);
       if (socket.connected) current.timer = setTimeout(trySend, RETRY_MS);
       return;
     }
     pending = null;
+    forgetWaitingSend();
     lockForm(false);
-    if (!res.ok) return showFormError(res.error);
+    if (!res.ok) {
+      // Refused: everything stays in the form, to fix or send again.
+      if (res.code === 'SESSION_ENDED') showUnsent(res.error);
+      return showFormError(res.error);
+    }
+    showUnsent(null);
     store.upsert(res.prescription);
     renderList();
     setStatus(`Sent ${res.prescription.id} (${res.prescription.patientRef})`, 'success');
@@ -267,7 +367,7 @@ function trySend() {
 // Back online: send the waiting prescription again straight away, without
 // waiting for the old attempt to time out.
 socket.on('connect', trySend);
-socket.on('disconnect', () => pending && setStatus(WAITING_OFFLINE, 'waiting'));
+socket.on('disconnect', () => pending && setWaiting(WAITING_OFFLINE));
 
 // ---- List ------------------------------------------------------------------
 
@@ -291,3 +391,4 @@ function renderList() {
 }
 
 resetForm();
+restoreWaitingSend();

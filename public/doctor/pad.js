@@ -31,6 +31,7 @@ export function createPad(canvas, { wrapper, undoButton, clearButton, lockedEl }
   const ctx = canvas.getContext('2d');
   let drawSize = null; // the CSS size the bitmap was made for
   let lockMessage = null; // null when unlocked
+  let waiting = null; // { strokes, size }: a saved drawing to put back (see load)
 
   // ---- Stroke ends -----------------------------------------------------------
 
@@ -91,6 +92,15 @@ export function createPad(canvas, { wrapper, undoButton, clearButton, lockedEl }
     const box = canvas.getBoundingClientRect();
     if (!box.width || !box.height) return; // hidden
     if (!isPortrait()) return setLock(LANDSCAPE_MESSAGE);
+    if (waiting) {
+      // A saved drawing goes back only at the size it was drawn at, onto a
+      // fresh empty bitmap: drawn once, never scaled or resized.
+      if (!sameSize(box, waiting.size)) return setLock(RESIZED_MESSAGE);
+      sizeBitmap(box);
+      redraw(waiting.strokes);
+      waiting = null;
+      return setLock(null);
+    }
     if (pad.isEmpty()) {
       if (!drawSize || !sameSize(box, drawSize)) sizeBitmap(box);
       return setLock(null);
@@ -133,10 +143,21 @@ export function createPad(canvas, { wrapper, undoButton, clearButton, lockedEl }
 
   return {
     fit,
-    isEmpty: () => pad.isEmpty(),
+    isEmpty: () => pad.isEmpty() && !waiting,
+    // The strokes and the size they were drawn at, to save (see load).
+    snapshot: () => ({ strokes: pad.toData(), size: drawSize }),
+    // Puts back a snapshot, e.g. a send still waiting when the page was
+    // reloaded. It appears as soon as the pad is shown at that size.
+    load(snapshot) {
+      pad.clear();
+      waiting = snapshot;
+      refresh();
+      fit();
+    },
     // The message to show, or null if the pad can be used and sent.
     lockMessage: () => lockMessage,
     clear() {
+      waiting = null;
       pad.clear();
       wrapper.classList.remove('pad--invalid');
       refresh();

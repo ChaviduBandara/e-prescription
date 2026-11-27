@@ -92,7 +92,7 @@ function registerSocketHandlers(io, db, { dataDir, auth, archiver }) {
             ? createHandwrittenPrescription(db, dataDir, value)
             : createTypedPrescription(db, value);
       } catch (err) {
-        if (err instanceof NoOpenSessionError) return reply({ ok: false, error: err.message });
+        if (err instanceof NoOpenSessionError) return reply({ ok: false, code: err.code, error: err.message });
         // The same request saved in the meantime (the unique index caught it).
         const saved = value.requestId && findByRequestId(db, value.requestId);
         if (saved) return replyDuplicate(reply, saved, value);

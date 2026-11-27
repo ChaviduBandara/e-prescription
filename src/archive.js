@@ -15,6 +15,7 @@ const path = require('path');
 const PDFDocument = require('pdfkit');
 const { getSession } = require('./sessions');
 const { listForSession, getImageFile } = require('./prescriptions');
+const { setUpFonts, textRuns, writeRich, heightOf, UNPRINTABLE_COLOR } = require('./pdf-text');
 
 const MARGIN = 50;
 const RETRY_FIRST_MS = 5000;
@@ -43,20 +44,30 @@ function archiveFileName(session) {
 // Resolves with the PDF bytes for `session` and its prescriptions.
 function buildSessionPdf({ session, prescriptions, clinicName, imageFileFor }) {
   return new Promise((resolve, reject) => {
+    // Dated by the session, not the clock, so the same session always makes
+    // the same bytes (pdfkit derives the file ID from this info). After a
+    // crash, a rebuilt PDF then matches the one already written.
+    const dated = new Date(session.endedAt || session.startedAt);
     const doc = new PDFDocument({
       size: 'A4',
       margin: MARGIN,
       bufferPages: true, // for "Page n of m"
-      info: { Title: `Session ${session.id} — ${localDate(session.startedAt)}`, Author: clinicName }
+      info: {
+        Title: `Session ${session.id} — ${localDate(session.startedAt)}`,
+        Author: clinicName,
+        CreationDate: dated,
+        ModDate: dated
+      }
     });
+    const fonts = setUpFonts(doc);
     const chunks = [];
     doc.on('data', (c) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
     try {
-      writeHeader(doc, session, prescriptions, clinicName);
-      prescriptions.forEach((rx, i) => writePrescription(doc, rx, i + 1, imageFileFor(rx)));
+      writeHeader(doc, fonts, session, prescriptions, clinicName);
+      prescriptions.forEach((rx, i) => writePrescription(doc, fonts, rx, i + 1, imageFileFor(rx)));
       if (prescriptions.length === 0) doc.font('Helvetica-Oblique').text('No prescriptions in this session.');
       writeFooters(doc, session);
       doc.end();
@@ -73,8 +84,10 @@ function ensureSpace(doc, height) {
   if (doc.y + height > bottom(doc)) doc.addPage();
 }
 
-function writeHeader(doc, session, prescriptions, clinicName) {
-  doc.font('Helvetica-Bold').fontSize(18).text(clinicName);
+function writeHeader(doc, fonts, session, prescriptions, clinicName) {
+  const name = textRuns(fonts, clinicName, { bold: true });
+  writeRich(doc, name.runs, MARGIN, doc.y, { size: 18, width: width(doc) });
+  writeMissing(doc, name.missing, 'the clinic name (CLINIC_NAME)');
   doc.font('Helvetica').fontSize(12).fillColor('#333333');
   doc.text(`Prescriptions — Session ${session.id}`);
   const ended = session.endedAt ? localDateTime(session.endedAt) : 'still open';
@@ -94,48 +107,75 @@ function rule(doc) {
 const HEADING_HEIGHT = 45; // ID line + times line + gap
 const CAPTION_HEIGHT = 20;
 
-function writePrescription(doc, rx, number, imageFile) {
+function writePrescription(doc, fonts, rx, number, imageFile) {
   const image = rx.kind === 'handwritten' ? openImage(doc, imageFile) : null;
   const size = image && imageSize(doc, image);
   // A drawing always starts on the same page as its ID and patient, so a
   // printed page never shows handwriting without saying whose it is.
   ensureSpace(doc, HEADING_HEIGHT + (size ? size.height + CAPTION_HEIGHT : 45));
-  doc.font('Helvetica-Bold').fontSize(13).text(`${number}. ${rx.id}`, { continued: true });
-  doc.font('Helvetica').text(`   Patient: ${rx.patientRef}`);
+  // One paragraph: "1. RX-… (bold)   Patient: " then the ref in its own
+  // script, all on one baseline.
+  const ref = textRuns(fonts, rx.patientRef);
+  const heading = [
+    { font: 'Helvetica-Bold', text: `${number}. ${rx.id}` },
+    { font: 'Helvetica', text: '   Patient: ' },
+    ...ref.runs
+  ];
+  writeRich(doc, heading, MARGIN, doc.y, { size: 13, width: width(doc) });
+  const missing = [...ref.missing];
   doc.fontSize(10).fillColor('#333333');
   const dispensed = rx.dispensedAt ? localDateTime(rx.dispensedAt) : 'Not dispensed';
   doc.text(`Sent: ${localDateTime(rx.createdAt)}    Dispensed: ${dispensed}`);
   doc.fillColor('black').moveDown(0.5);
 
   if (rx.kind === 'handwritten') writeHandwriting(doc, image, size);
-  else writeLines(doc, rx.lines);
+  else missing.push(...writeLines(doc, fonts, rx.lines));
+  writeMissing(doc, missing, rx.id);
   rule(doc);
 }
 
+// Says, in red, which characters could not be printed (shown as "?"), so a
+// reader knows to check the original instead of trusting the paper.
+function writeMissing(doc, missing, where) {
+  if (missing.length === 0) return;
+  const list = [...new Set(missing)].join(', ');
+  doc.moveDown(0.3);
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(UNPRINTABLE_COLOR);
+  doc.text(`Some characters could not be printed (shown as ?): ${list}. Check ${where} in the e-Prescription system.`, MARGIN, doc.y, {
+    width: width(doc)
+  });
+  doc.fillColor('black');
+}
+
 // Columns: Medicine 40%, Dosage 20%, Instructions 40%, matching the screen.
-function writeLines(doc, lines) {
+// Returns the characters that could not be printed.
+function writeLines(doc, fonts, lines) {
   const w = width(doc);
   const cols = [
     { key: 'medicine', title: 'Medicine', width: w * 0.4 },
     { key: 'dosage', title: 'Dosage', width: w * 0.2 },
     { key: 'instructions', title: 'Instructions', width: w * 0.4 }
   ];
-  const row = (cells, font) => {
-    doc.font(font).fontSize(10.5);
-    const heights = cols.map((c, i) => doc.heightOfString(cells[i] || '-', { width: c.width - 8 }));
-    const height = Math.max(...heights);
+  const missing = [];
+  const row = (cells, bold) => {
+    const texts = cells.map((cell) => textRuns(fonts, cell || '-', { bold }));
+    texts.forEach((t) => missing.push(...t.missing));
+    const height = Math.max(...texts.map((t, i) => heightOf(doc, t.runs, { size: 10.5, width: cols[i].width - 8 })));
     ensureSpace(doc, height + 4);
     const top = doc.y;
     let x = MARGIN;
-    cols.forEach((c, i) => {
-      doc.text(cells[i] || '-', x, top, { width: c.width - 8 });
-      x += c.width;
+    let end = top + height;
+    texts.forEach((t, i) => {
+      writeRich(doc, t.runs, x, top, { size: 10.5, width: cols[i].width - 8 });
+      end = Math.max(end, doc.y);
+      x += cols[i].width;
     });
     doc.x = MARGIN;
-    doc.y = top + height + 4;
+    doc.y = end + 4;
   };
-  row(cols.map((c) => c.title), 'Helvetica-Bold');
-  for (const line of lines) row(cols.map((c) => line[c.key]), 'Helvetica');
+  row(cols.map((c) => c.title), true);
+  for (const line of lines) row(cols.map((c) => line[c.key]), false);
+  return missing;
 }
 
 function openImage(doc, imageFile) {
@@ -196,11 +236,16 @@ function writeFooters(doc, session) {
 
 // Writes `bytes` to dir/name via a hidden temp file + fsync + rename.
 // Never overwrites a different file of the same name (e.g. an archive from
-// an older database): that one gets a _2, _3 … suffix instead.
+// an older database): that one gets a _2, _3 … suffix instead. A file that
+// already holds exactly these bytes (written just before a crash, not yet
+// recorded) is reused as it is, so a crash never leaves a duplicate.
 function writeAtomically(dir, name, bytes) {
   fs.mkdirSync(dir, { recursive: true });
   let target = path.join(dir, name);
-  for (let n = 2; fs.existsSync(target); n++) target = path.join(dir, name.replace(/\.pdf$/, `_${n}.pdf`));
+  for (let n = 2; fs.existsSync(target); n++) {
+    if (sameBytes(target, bytes)) return path.basename(target);
+    target = path.join(dir, name.replace(/\.pdf$/, `_${n}.pdf`));
+  }
   const tmp = path.join(dir, `.${path.basename(target)}.${process.pid}.partial`);
   try {
     const fd = fs.openSync(tmp, 'w');
@@ -216,6 +261,14 @@ function writeAtomically(dir, name, bytes) {
     throw err;
   }
   return path.basename(target);
+}
+
+function sameBytes(file, bytes) {
+  try {
+    return fs.statSync(file).size === bytes.length && fs.readFileSync(file).equals(bytes);
+  } catch {
+    return false;
+  }
 }
 
 // Builds and writes the PDF for a closed session, then records it.

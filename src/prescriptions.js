@@ -29,8 +29,19 @@ function toPrescription(row) {
 }
 
 class NoOpenSessionError extends Error {
+  constructor(message = 'No open session. Tap Start Session first.') {
+    super(message);
+    this.code = 'NO_SESSION';
+  }
+}
+
+// The send was made in a session that has since ended (e.g. it waited
+// offline while the pharmacist ended the session). It is not filed in
+// whatever session is open now: that would put it in the wrong day's PDF.
+class SessionEndedError extends NoOpenSessionError {
   constructor() {
-    super('No open session. Tap Start Session first.');
+    super('The session ended before this was sent. Start a new session and send again.');
+    this.code = 'SESSION_ENDED';
   }
 }
 
@@ -40,9 +51,11 @@ const INSERT = `INSERT INTO prescriptions
 
 // Runs `write(id)` and the insert in one write transaction, so the ID read
 // and the insert cannot interleave with another send.
-function insertPrescription(db, now, build) {
+// `expectedSessionId`, when given, must be the open session.
+function insertPrescription(db, now, expectedSessionId, build) {
   return db.transaction(() => {
     const session = getOpenSession(db);
+    if (expectedSessionId != null && (!session || session.id !== expectedSessionId)) throw new SessionEndedError();
     if (!session) throw new NoOpenSessionError();
     const id = nextPrescriptionId(db, now);
     const fields = build(id);
@@ -61,7 +74,7 @@ function insertPrescription(db, now, build) {
 
 // `value` must already be validated (see validation.js).
 function createTypedPrescription(db, value, now = new Date()) {
-  return insertPrescription(db, now, () => ({
+  return insertPrescription(db, now, value.sessionId, () => ({
     patientRef: value.patientRef,
     kind: 'typed',
     typedBody: JSON.stringify({ lines: value.lines }),
@@ -74,7 +87,7 @@ function createTypedPrescription(db, value, now = new Date()) {
 function createHandwrittenPrescription(db, dataDir, value, now = new Date()) {
   let written = null;
   try {
-    return insertPrescription(db, now, (id) => {
+    return insertPrescription(db, now, value.sessionId, (id) => {
       const relative = path.posix.join(IMAGES_SUBDIR, `${id}.png`);
       written = imageFile(dataDir, relative);
       writeFileDurably(written, value.image);
@@ -160,6 +173,7 @@ module.exports = {
   listForSession,
   markDispensed,
   NoOpenSessionError,
+  SessionEndedError,
   NotDispensableError,
   IMAGES_SUBDIR
 };

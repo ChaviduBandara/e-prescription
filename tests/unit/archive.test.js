@@ -149,3 +149,61 @@ test('a handwriting image starts on the same page as its ID and patient', async 
     await parser.destroy();
   }
 });
+
+test('Sinhala and Tamil prescriptions print in the bundled Noto fonts with no warning', async () => {
+  const sinhala = { ...typedRx(1), patientRef: 'TOKEN-001', lines: [{ medicine: 'පරීක්ෂණ ඖෂධය 10mg', dosage: 'පෙති 1', instructions: 'ශ්‍රී ක්‍රම දිනකට දෙවරක්' }] };
+  const tamil = { ...typedRx(2), patientRef: 'டோக்கன்-002', lines: [{ medicine: 'சோதனை மாத்திரை 10mg', dosage: '1', instructions: 'உணவுக்குப் பின்' }] };
+  const bytes = await buildSessionPdf({ session: SESSION, prescriptions: [sinhala, tamil], clinicName: 'Test Clinic', imageFileFor: () => null });
+  const raw = bytes.toString('latin1');
+  assert.match(raw, /\/BaseFont \/[A-Z]{6}\+NotoSansSinhala/);
+  assert.match(raw, /\/BaseFont \/[A-Z]{6}\+NotoSansTamil/);
+  const { text } = await pdfInfo(bytes);
+  for (const rx of [sinhala, tamil]) assert.match(text, new RegExp(rx.id));
+  assert.match(text, /Sent: /, 'Latin after a Tamil patient ref is still Latin');
+  assert.doesNotMatch(text, /could not be printed/);
+});
+
+test('a character no font can print is shown as ? and named in a visible note, nothing dropped', async () => {
+  const rx = { ...typedRx(3), lines: [{ medicine: 'Test Medicine 10mg', dosage: '1 tablet', instructions: 'Twice daily → after meals 测' }] };
+  const { text } = await pdfInfo(await buildSessionPdf({ session: SESSION, prescriptions: [rx], clinicName: 'Test Clinic', imageFileFor: () => null }));
+  assert.match(text, /Twice daily \? after meals \?/);
+  assert.match(text, /Some characters could not be printed \(shown as \?\): U\+2192, U\+6D4B\. Check RX-20260102-0003/);
+  assert.match(text, /Test Medicine 10mg/);
+});
+
+test('the same session always makes the same PDF bytes', async () => {
+  const build = () =>
+    buildSessionPdf({ session: SESSION, prescriptions: [typedRx(1), { ...typedRx(2), patientRef: 'ටෝකන්-002' }], clinicName: 'Test Clinic', imageFileFor: () => null });
+  const first = await build();
+  await new Promise((r) => setTimeout(r, 20)); // a different clock
+  assert.ok(first.equals(await build()));
+});
+
+test('writeAtomically reuses an identical file instead of writing a _2 copy', (t) => {
+  const dir = tempDir(t);
+  fs.writeFileSync(path.join(dir, 'a.pdf'), 'older, different');
+  assert.equal(writeAtomically(dir, 'a.pdf', Buffer.from('same')), 'a_2.pdf');
+  assert.equal(writeAtomically(dir, 'a.pdf', Buffer.from('same')), 'a_2.pdf', 'the identical _2 is reused');
+  assert.equal(writeAtomically(dir, 'a.pdf', Buffer.from('other')), 'a_3.pdf');
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['a.pdf', 'a_2.pdf', 'a_3.pdf']);
+});
+
+test('a crash after the PDF was written but before it was recorded leaves no duplicate', async (t) => {
+  const { db, dir } = tempDb(t);
+  const { session } = startSession(db);
+  createTypedPrescription(db, fakeTyped());
+  endSession(db, session.id);
+  const options = { dataDir: dir, archiveDir: path.join(dir, 'archive'), clinicName: 'Test Clinic' };
+
+  // First run: the file is written and recorded; then the record is lost,
+  // as if the server died between the rename and the UPDATE.
+  const first = await archiveSession(db, options, session.id);
+  db.prepare('UPDATE sessions SET archive_file = NULL, archived_at = NULL WHERE id = ?').run(session.id);
+
+  const archiver = createArchiver(db, options, {});
+  t.after(() => archiver.close());
+  const [result] = await archiver.archivePending();
+  assert.equal(result.ok, true);
+  assert.equal(result.session.archiveFile, first.archiveFile, 'the existing file is recorded');
+  assert.deepEqual(fs.readdirSync(options.archiveDir), [first.archiveFile], 'no _2 copy');
+});

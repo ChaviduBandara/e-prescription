@@ -10,11 +10,13 @@ const ROOT = path.join(__dirname, '..');
 
 // Resolves { child, port, base } once the server is listening. `port: 0`
 // picks a free one; pass the same port again to restart in place.
-function spawnServer({ dataDir, archiveDir, pins, port = 0 }) {
-  const child = spawn(process.execPath, ['server.js'], {
+// `script` and `env` run another entry point, e.g. tests/e2e/web-server.js.
+function spawnServer({ dataDir, archiveDir, pins, port = 0, script = 'server.js', env = {} }) {
+  const child = spawn(process.execPath, [script], {
     cwd: ROOT,
     env: {
       ...process.env,
+      ...env,
       PORT: String(port),
       DATA_DIR: dataDir,
       ARCHIVE_DIR: archiveDir,

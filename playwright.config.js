@@ -17,6 +17,7 @@ if (!process.env.E2E_PORT) {
   process.env.E2E_PORT = execFileSync(process.execPath, ['-e', findFreePort]).toString().trim();
 
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'e-prescription-e2e-'));
+  process.env.E2E_TMP_ROOT = tmpRoot; // deleted after the run (global-teardown.js)
   process.env.E2E_DATA_DIR = path.join(tmpRoot, 'data');
   process.env.E2E_ARCHIVE_DIR = path.join(tmpRoot, 'archive');
   fs.mkdirSync(process.env.E2E_DATA_DIR, { recursive: true });
@@ -32,6 +33,7 @@ module.exports = defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: 'list',
+  globalTeardown: require.resolve('./tests/e2e/global-teardown.js'),
   use: {
     baseURL: BASE_URL,
     trace: 'retain-on-failure'
@@ -41,13 +43,14 @@ module.exports = defineConfig({
     { name: 'webkit', use: { ...devices['Desktop Safari'] } }
   ],
   webServer: {
-    command: 'node server.js',
+    command: 'node tests/e2e/web-server.js',
     url: `${BASE_URL}/health`,
     // Always start a fresh server with temp dirs; never reuse a dev server
     // that might be pointing at the real database.
     reuseExistingServer: false,
     env: {
       PORT: process.env.E2E_PORT,
+      E2E_TMP_ROOT: process.env.E2E_TMP_ROOT,
       DATA_DIR: process.env.E2E_DATA_DIR,
       ARCHIVE_DIR: process.env.E2E_ARCHIVE_DIR,
       // Fake PINs for tests only (tests/e2e/fixtures.js PINS).
